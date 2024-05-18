@@ -1,13 +1,15 @@
 use std::time::Duration;
 
 use anyhow::Context;
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use log::info;
 use paho_mqtt as mqtt;
 
 use mqtt_bench::cli::{Cli, Commands};
 use prometheus::{linear_buckets, Encoder, Histogram, HistogramOpts, Registry, TextEncoder};
 use tokio::time::sleep;
+
+use clap_help::Printer;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -31,6 +33,12 @@ async fn main() -> Result<(), anyhow::Error> {
     r.register(Box::new(sub_histo.clone())).unwrap();
 
     let cli = Cli::parse();
+
+    if cli.help {
+        Printer::new(Cli::command()).print_help();
+        return Ok(());
+    }
+
     match cli.command {
         Some(cmd) => match cmd {
             Commands::Connect { common } => {
@@ -48,6 +56,9 @@ async fn main() -> Result<(), anyhow::Error> {
                     common.connection_string(),
                     client.client_id()
                 );
+                if common.show_statistics {
+                    show_statistics(&r);
+                }
             }
             Commands::Pub {
                 common,
@@ -107,79 +118,13 @@ async fn main() -> Result<(), anyhow::Error> {
         }
     }
 
-    // let server_uri = "ssl://mqtt-mw5b95mv-gz-public.mqtt.tencenttdmq.com:8883";
-
-    // let create_opts = mqtt::CreateOptionsBuilder::new_v3()
-    //     .client_id("rust_client_id")
-    //     .server_uri(server_uri)
-    //     .mqtt_version(4)
-    //     .persistence(PersistenceType::None)
-    //     .send_while_disconnected(false)
-    //     .allow_disconnected_send_at_anytime(false)
-    //     .finalize();
-
-    // let connect_opts = mqtt::ConnectOptionsBuilder::new_v3()
-    //     .clean_session(true)
-    //     .user_name("root")
-    //     .password("password")
-    //     .connect_timeout(Duration::from_secs(5))
-    //     .keep_alive_interval(Duration::from_secs(3))
-    //     .ssl_options(SslOptionsBuilder::new().finalize())
-    //     .finalize();
-
-    // let client =
-    //     mqtt::AsyncClient::new(create_opts).context("Failed to create MQTT AsyncClient")?;
-
-    // client.set_connected_callback(|cli| {
-    //     println!(
-    //         "Connected to the MQTT server client-id: {}",
-    //         cli.client_id()
-    //     );
-    // });
-
-    // client.set_connection_lost_callback(|c| {
-    //     println!("Connection lost client-id: {}", c.client_id());
-    // });
-
-    // let _connect_result = client
-    //     .connect(connect_opts)
-    //     .await
-    //     .context("Failed to connect to the MQTT server")?;
-
-    // let semaphore = Arc::new(Semaphore::new(0));
-    // let counter = Arc::clone(&semaphore);
-    // client.set_message_callback(move |_client, _msg| {
-    //     counter.add_permits(1);
-    // });
-    // client.subscribe_many(&["home/#"], &[mqtt::QOS_1]).await?;
-
-    // let total = 16;
-
-    // for _ in 0..total {
-    //     let instant = std::time::Instant::now();
-    //     client
-    //         .publish(
-    //             MessageBuilder::new()
-    //                 .topic("home/1")
-    //                 .payload(b"test")
-    //                 .qos(mqtt::QOS_1)
-    //                 .finalize(),
-    //         )
-    //         .await
-    //         .context("Failed to publish message")?;
-    //     let elapsed = instant.elapsed().as_millis();
-    //     histo.observe(elapsed as f64);
-    // }
-
-    sleep(Duration::from_secs(3)).await;
-
-    {
-        let mut buffer = vec![];
-        let encoder = TextEncoder::new();
-        let metric_families = r.gather();
-        encoder.encode(&metric_families, &mut buffer).unwrap();
-        println!("{}", String::from_utf8(buffer).unwrap());
-    }
-
     Ok(())
+}
+
+fn show_statistics(r: &Registry) {
+    let mut buffer = vec![];
+    let encoder = TextEncoder::new();
+    let metric_families = r.gather();
+    encoder.encode(&metric_families, &mut buffer).unwrap();
+    println!("{}", String::from_utf8(buffer).unwrap());
 }

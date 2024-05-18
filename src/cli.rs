@@ -1,31 +1,43 @@
 use clap::{Args, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
-#[command(version, about, long_about = None)]
+#[command(name = "mqtt-bench", author, version, about, long_about = None, disable_help_flag = true)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
+
+    #[arg(long)]
+    pub help: bool,
 }
 
 #[derive(Debug, Args)]
 pub struct Common {
-    #[arg(long)]
+    #[arg(short = 'h', long)]
     pub host: String,
 
-    #[arg(long)]
+    #[arg(short = 'p', long)]
     pub port: Option<u16>,
 
-    #[arg(short, long)]
+    #[arg(short = 'u', long)]
     pub user_name: String,
 
-    #[arg(long)]
+    #[arg(short = 'P', long)]
     pub password: String,
 
-    #[arg(short, long)]
+    #[arg(short = 's', long)]
     pub ssl: bool,
 
-    #[arg(long, default_value_t = 0)]
+    #[arg(short = 'q', long, default_value_t = 0)]
     pub qos: i32,
+
+    #[arg(short = 'c', long, default_value_t = 16)]
+    pub concurrency: usize,
+
+    #[arg(long, default_value_t = String::from("bench-client-%d"))]
+    pub client_id: String,
+
+    #[arg(long)]
+    pub show_statistics: bool,
 }
 
 impl Common {

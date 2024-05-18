@@ -2,12 +2,17 @@
 name = "mqtt-bench"
 version = "0.1.0"
 edition = "2021"
+authors = ["Zhanhui Li <lizhanhui@gmail.com>"]
+description = "A MQTT benchmark tool"
+license = "Apache-2.0"
+keywords = ["mqtt", "benchmark"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 anyhow = "1.0.83"
 clap = { version = "4.5.4", features = ["derive"] }
+clap-help = "1.2.0"
 env_logger = "0.11.3"
 log = "0.4.21"
 paho-mqtt = "0.12.3"

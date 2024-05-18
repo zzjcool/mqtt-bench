@@ -67,7 +67,12 @@ impl<'a> Client<'a> {
             .password(&self.opts.password)
             .connect_timeout(std::time::Duration::from_secs(5))
             .keep_alive_interval(std::time::Duration::from_secs(3))
-            .ssl_options(mqtt::SslOptionsBuilder::new().finalize())
+            .ssl_options(
+                mqtt::SslOptionsBuilder::new()
+                    .verify(false)
+                    .enable_server_cert_auth(false)
+                    .finalize(),
+            )
             .finalize();
 
         self.inner.set_connected_callback(|cli| {
