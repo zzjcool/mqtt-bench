@@ -1,13 +1,22 @@
-use std::time::Duration;
+use std::{
+    sync::{
+        atomic::{
+            AtomicBool, AtomicUsize,
+            Ordering::{self, Relaxed, SeqCst},
+        },
+        Arc,
+    },
+    time::Duration,
+};
 
 use anyhow::Context;
 use clap::{CommandFactory, Parser};
-use log::info;
+use log::{debug, info, trace};
 use paho_mqtt as mqtt;
 
 use mqtt_bench::cli::{Cli, Commands};
 use prometheus::{linear_buckets, Encoder, Histogram, HistogramOpts, Registry, TextEncoder};
-use tokio::time::sleep;
+use tokio::{sync::mpsc::channel, time::sleep};
 
 use clap_help::Printer;
 
@@ -39,25 +48,70 @@ async fn main() -> Result<(), anyhow::Error> {
         return Ok(());
     }
 
+    let stopped = Arc::new(AtomicBool::new(false));
+
+    let stopped_flag = stopped.clone();
+    tokio::spawn(async move {
+        if let Ok(()) = tokio::signal::ctrl_c().await {
+            info!("Ctrl-C received, stopping");
+            stopped_flag.store(true, Ordering::Relaxed);
+        }
+        tokio::signal::ctrl_c().await.unwrap();
+        stopped_flag.store(true, Relaxed);
+    });
+
     match cli.command {
         Some(cmd) => match cmd {
             Commands::Connect { common } => {
-                let client = mqtt_bench::client::Client::new(
-                    &common,
-                    "rust_client_id",
-                    conn_histo.clone(),
-                    pub_histo.clone(),
-                    pub_histo.clone(),
-                )
-                .context("Failed to create MQTT client")?;
-                client.connect().await?;
-                info!(
-                    "Connection to {} established with client-id={}",
-                    common.connection_string(),
-                    client.client_id()
-                );
+                let mut clients = vec![];
+                let connected = Arc::new(AtomicUsize::new(0));
+                let (tx, mut rx) = channel::<()>(1);
+                tokio::spawn({
+                    let connected = connected.clone();
+                    let stopped_flag = stopped.clone();
+                    async move {
+                        loop {
+                            tokio::select! {
+                                _ = rx.recv() => {
+                                    debug!("Received signal to stop");
+                                    break;
+                                }
+                                _ = sleep(Duration::from_secs(1)) => {
+                                    info!("{} client(s) connected", connected.load(SeqCst));
+                                    if stopped_flag.load(Relaxed) {
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+                for id in 0..common.total {
+                    let client = mqtt_bench::client::Client::new(
+                        &common,
+                        &format!("client_{}", id),
+                        conn_histo.clone(),
+                        pub_histo.clone(),
+                        pub_histo.clone(),
+                    )
+                    .context("Failed to create MQTT client")?;
+                    client.connect().await?;
+                    clients.push(client);
+                    connected.fetch_add(1, SeqCst);
+
+                    if stopped.load(Ordering::Relaxed) {
+                        break;
+                    }
+                }
+
                 if common.show_statistics {
                     show_statistics(&r);
+                }
+
+                // Attempt to signal task that is printing statistics.
+                if let Err(_e) = tx.send(()).await {
+                    trace!("Should have received Ctrl-C signal");
+                    debug_assert_eq!(true, stopped.load(Ordering::Relaxed));
                 }
             }
             Commands::Pub {

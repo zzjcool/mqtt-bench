@@ -69,8 +69,9 @@ impl<'a> Client<'a> {
             .keep_alive_interval(std::time::Duration::from_secs(3))
             .ssl_options(
                 mqtt::SslOptionsBuilder::new()
-                    .verify(false)
-                    .enable_server_cert_auth(false)
+                    .verify(self.opts.verify)
+                    .enable_server_cert_auth(self.opts.auth_server_certificate)
+                    .ssl_version(mqtt::SslVersion::Tls_1_2)
                     .finalize(),
             )
             .finalize();

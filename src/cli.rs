@@ -27,11 +27,26 @@ pub struct Common {
     #[arg(short = 's', long)]
     pub ssl: bool,
 
+    #[arg(short, long)]
+    pub verify: bool,
+
+    #[arg(short, long)]
+    pub auth_server_certificate: bool,
+
     #[arg(short = 'q', long, default_value_t = 0)]
     pub qos: i32,
 
-    #[arg(short = 'c', long, default_value_t = 16)]
+    /// Total number of client to create
+    #[arg(long, default_value_t = 16)]
+    pub total: usize,
+
+    /// The number of clients to create in parallel for each iteration
+    #[arg(short = 'c', long, default_value_t = 1)]
     pub concurrency: usize,
+
+    /// The interval between creating a new client in milliseconds
+    #[arg(short = 'i', long, default_value_t = 100)]
+    pub interval: u64,
 
     #[arg(long, default_value_t = String::from("bench-client-%d"))]
     pub client_id: String,

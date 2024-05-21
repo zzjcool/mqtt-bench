@@ -7,26 +7,35 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in library 'mqtt-bench'",
+            "name": "mqtt-bench connect",
             "cargo": {
                 "args": [
-                    "test",
-                    "--no-run",
-                    "--lib",
+                    "build",
+                    "--bin=mqtt-bench",
                     "--package=mqtt-bench"
                 ],
                 "filter": {
                     "name": "mqtt-bench",
-                    "kind": "lib"
+                    "kind": "bin"
                 }
             },
-            "args": [],
+            "env": {
+                "RUST_LOG": "debug"
+            },
+            "args": [
+                "connect",
+                "--host",
+                "mqtt-q59dap34-gz-public.mqtt.tencenttdmq.com",
+                "--ssl",
+                "-u","root",
+                "--password", "password",
+            ],
             "cwd": "${workspaceFolder}"
         },
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug mqtt-bench",
+            "name": "mqtt-bench publish",
             "cargo": {
                 "args": [
                     "build",
@@ -41,7 +50,7 @@
             "args": [
                 "pub",
                 "--host",
-                "mqtt-mw5b95mv-gz-public.mqtt.tencenttdmq.com",
+                "mqtt-q59dap34-gz-public.mqtt.tencenttdmq.com",
                 "--ssl",
                 "-u","root",
                 "--password", "password",
