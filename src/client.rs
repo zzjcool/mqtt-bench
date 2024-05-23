@@ -1,22 +1,22 @@
 use super::cli::Common;
 use anyhow::Context;
-use log::info;
+use log::{debug, info};
 use mqtt::AsyncClient;
 use paho_mqtt as mqtt;
 use prometheus::Histogram;
 use tokio::time::Instant;
 
-pub struct Client<'a> {
-    opts: &'a Common,
+pub struct Client {
+    opts: Common,
     pub inner: AsyncClient,
     conn_histo: Histogram,
     pub_histo: Histogram,
     sub_histo: Histogram,
 }
 
-impl<'a> Client<'a> {
+impl Client {
     pub fn new(
-        opts: &'a Common,
+        opts: Common,
         client_id: &str,
         conn_histo: Histogram,
         pub_histo: Histogram,
@@ -77,7 +77,7 @@ impl<'a> Client<'a> {
             .finalize();
 
         self.inner.set_connected_callback(|cli| {
-            info!(
+            debug!(
                 "Connected to server_uri={} with client-id={}",
                 cli.server_uri(),
                 cli.client_id()

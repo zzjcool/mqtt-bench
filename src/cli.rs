@@ -10,7 +10,7 @@ pub struct Cli {
     pub help: bool,
 }
 
-#[derive(Debug, Args)]
+#[derive(Debug, Clone, Args)]
 pub struct Common {
     #[arg(short = 'h', long)]
     pub host: String,
@@ -41,7 +41,7 @@ pub struct Common {
     pub total: usize,
 
     /// The number of clients to create in parallel for each iteration
-    #[arg(short = 'c', long, default_value_t = 1)]
+    #[arg(short = 'c', long, default_value_t = 4)]
     pub concurrency: usize,
 
     /// The interval between creating a new client in milliseconds
