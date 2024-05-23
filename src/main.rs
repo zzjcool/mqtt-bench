@@ -48,14 +48,16 @@ async fn main() -> Result<(), anyhow::Error> {
     let state = State::new();
 
     let ctrl_c_state = Arc::clone(&state);
-    tokio::spawn(async move {
-        if let Ok(()) = tokio::signal::ctrl_c().await {
-            info!("Ctrl-C received, stopping");
+    let _ = tokio::task::Builder::new()
+        .name("ctrl_c")
+        .spawn(async move {
+            if let Ok(()) = tokio::signal::ctrl_c().await {
+                info!("Ctrl-C received, stopping");
+                ctrl_c_state.stop_flag().store(true, Ordering::Relaxed);
+            }
+            tokio::signal::ctrl_c().await.unwrap();
             ctrl_c_state.stop_flag().store(true, Ordering::Relaxed);
-        }
-        tokio::signal::ctrl_c().await.unwrap();
-        ctrl_c_state.stop_flag().store(true, Ordering::Relaxed);
-    });
+        });
 
     match cli.command {
         Some(cmd) => match cmd {
@@ -63,7 +65,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 let semaphore = Arc::new(tokio::sync::Semaphore::new(common.concurrency));
                 let (tx, mut rx) = channel::<()>(1);
                 let stats_state = Arc::clone(&state);
-                tokio::spawn({
+                let _ = tokio::task::Builder::new().name("stats_printer").spawn({
                     async move {
                         loop {
                             tokio::select! {
@@ -102,27 +104,30 @@ async fn main() -> Result<(), anyhow::Error> {
                     };
 
                     let client_state = Arc::clone(&state);
-                    tokio::spawn(async move {
-                        if let Err(e) = client.connect().await {
-                            error!("{}", e.to_string());
-                            client_state.on_connect_failure();
-                            return;
-                        }
-                        client_state.on_connected();
+                    let _ =
+                        tokio::task::Builder::new()
+                            .name(&client.client_id())
+                            .spawn(async move {
+                                if let Err(e) = client.connect().await {
+                                    error!("{}", e.to_string());
+                                    client_state.on_connect_failure();
+                                    return;
+                                }
+                                client_state.on_connected();
 
-                        loop {
-                            if client_state.stopped() {
-                                break;
-                            }
+                                loop {
+                                    if client_state.stopped() {
+                                        break;
+                                    }
 
-                            if client.connected() {
-                                trace!("{} ping...", client.client_id());
-                                tokio::time::sleep(Duration::from_secs(1)).await;
-                                continue;
-                            }
-                            break;
-                        }
-                    });
+                                    if client.connected() {
+                                        trace!("{} ping...", client.client_id());
+                                        tokio::time::sleep(Duration::from_secs(1)).await;
+                                        continue;
+                                    }
+                                    break;
+                                }
+                            });
                 }
 
                 loop {
