@@ -4,10 +4,14 @@ use log::{debug, info};
 use mqtt::AsyncClient;
 use paho_mqtt as mqtt;
 use prometheus::Histogram;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use tokio::sync::Semaphore;
 use tokio::time::Instant;
 
 pub struct Client {
     opts: Common,
+    connect_semaphore: Arc<Semaphore>,
     pub inner: AsyncClient,
     conn_histo: Histogram,
     pub_histo: Histogram,
@@ -17,6 +21,7 @@ pub struct Client {
 impl Client {
     pub fn new(
         opts: Common,
+        connect_semaphore: Arc<Semaphore>,
         client_id: &str,
         conn_histo: Histogram,
         pub_histo: Histogram,
@@ -49,6 +54,7 @@ impl Client {
 
         Ok(Self {
             opts,
+            connect_semaphore,
             inner: client,
             conn_histo,
             pub_histo,
@@ -87,6 +93,12 @@ impl Client {
         self.inner.set_connection_lost_callback(|c| {
             info!("Connection lost client-id: {}", c.client_id());
         });
+
+        let _permit = self
+            .connect_semaphore
+            .acquire()
+            .await
+            .context("Failed to acquire connect permit")?;
         let instant = Instant::now();
         let _connect_result = self
             .inner
@@ -96,6 +108,10 @@ impl Client {
         self.conn_histo
             .observe(instant.elapsed().as_millis() as f64);
         Ok(())
+    }
+
+    pub fn connected(&self) -> bool {
+        self.inner.is_connected()
     }
 
     pub async fn publish(&self, message: mqtt::Message) -> Result<(), anyhow::Error> {

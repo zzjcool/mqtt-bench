@@ -1,12 +1,5 @@
-use std::sync::Mutex;
 use std::{
-    sync::{
-        atomic::{
-            AtomicBool, AtomicUsize,
-            Ordering::{self, Relaxed, SeqCst},
-        },
-        Arc,
-    },
+    sync::{atomic::Ordering, Arc},
     time::Duration,
 };
 
@@ -16,6 +9,8 @@ use log::{debug, error, info, trace};
 use paho_mqtt as mqtt;
 
 use mqtt_bench::cli::{Cli, Commands};
+use mqtt_bench::state::State;
+
 use prometheus::{linear_buckets, Encoder, Histogram, HistogramOpts, Registry, TextEncoder};
 use tokio::{sync::mpsc::channel, time::sleep};
 
@@ -49,26 +44,25 @@ async fn main() -> Result<(), anyhow::Error> {
         return Ok(());
     }
 
-    let stopped = Arc::new(AtomicBool::new(false));
+    let state = State::new();
 
-    let stopped_flag = stopped.clone();
+    let ctrl_c_state = Arc::clone(&state);
     tokio::spawn(async move {
         if let Ok(()) = tokio::signal::ctrl_c().await {
             info!("Ctrl-C received, stopping");
-            stopped_flag.store(true, Ordering::Relaxed);
+            ctrl_c_state.stop_flag().store(true, Ordering::Relaxed);
         }
         tokio::signal::ctrl_c().await.unwrap();
-        stopped_flag.store(true, Relaxed);
+        ctrl_c_state.stop_flag().store(true, Ordering::Relaxed);
     });
 
     match cli.command {
         Some(cmd) => match cmd {
             Commands::Connect { common } => {
-                let connected = Arc::new(AtomicUsize::new(0));
+                let semaphore = Arc::new(tokio::sync::Semaphore::new(common.concurrency));
                 let (tx, mut rx) = channel::<()>(1);
+                let stats_state = Arc::clone(&state);
                 tokio::spawn({
-                    let connected = connected.clone();
-                    let stopped_flag = stopped.clone();
                     async move {
                         loop {
                             tokio::select! {
@@ -77,8 +71,8 @@ async fn main() -> Result<(), anyhow::Error> {
                                     break;
                                 }
                                 _ = sleep(Duration::from_secs(1)) => {
-                                    info!("{} client(s) connected", connected.load(SeqCst));
-                                    if stopped_flag.load(Relaxed) {
+                                    info!("{} client(s) connected", stats_state.connected());
+                                    if stats_state.stop_flag().load(Ordering::Relaxed) {
                                         break;
                                     }
                                 }
@@ -87,66 +81,51 @@ async fn main() -> Result<(), anyhow::Error> {
                     }
                 });
 
-                let total = Arc::new(AtomicUsize::new(0));
-                let clients = Arc::new(Mutex::new(Vec::new()));
-
-                let semaphore = Arc::new(tokio::sync::Semaphore::new(common.concurrency));
                 for id in 0..common.total {
-                    let semaphore = Arc::clone(&semaphore);
-                    let clients = Arc::clone(&clients);
-                    let conn_histogram = conn_histo.clone();
-                    let pub_histogram = pub_histo.clone();
-                    let sub_histogram = sub_histo.clone();
-                    let connected = Arc::clone(&connected);
-                    let total = Arc::clone(&total);
-                    let common = common.clone();
-                    let semaphore = Arc::clone(&semaphore);
-                    let stop_flag = Arc::clone(&stopped);
+                    let client = match mqtt_bench::client::Client::new(
+                        common.clone(),
+                        Arc::clone(&semaphore),
+                        &format!("client_{}", id),
+                        conn_histo.clone(),
+                        pub_histo.clone(),
+                        sub_histo.clone(),
+                    )
+                    .context("Failed to create MQTT client")
+                    {
+                        Ok(client) => client,
+                        Err(e) => {
+                            error!("{}", e.to_string());
+                            state.on_connect_failure();
+                            break;
+                        }
+                    };
+
+                    let client_state = Arc::clone(&state);
                     tokio::spawn(async move {
-                        let client = match mqtt_bench::client::Client::new(
-                            common,
-                            &format!("client_{}", id),
-                            conn_histogram,
-                            pub_histogram,
-                            sub_histogram,
-                        )
-                        .context("Failed to create MQTT client")
-                        {
-                            Ok(client) => client,
-                            Err(e) => {
-                                error!("{}", e.to_string());
-                                total.fetch_add(1, Ordering::Relaxed);
-                                return;
-                            }
-                        };
-
-                        if let Ok(permit) = semaphore.acquire().await {
-                            if stop_flag.load(Ordering::Relaxed) {
-                                total.fetch_add(1, Ordering::Relaxed);
-                                return;
-                            }
-
-                            if let Err(e) = client.connect().await {
-                                error!("{}", e.to_string());
-                                total.fetch_add(1, Ordering::Relaxed);
-                                return;
-                            }
-                            drop(permit);
+                        if let Err(e) = client.connect().await {
+                            error!("{}", e.to_string());
+                            client_state.on_connect_failure();
+                            return;
                         }
+                        client_state.on_connected();
 
-                        match clients.lock() {
-                            Ok(mut guard) => guard.push(client),
-                            Err(e) => {
-                                error!("Unable to acquire lock: {}", e.to_string())
+                        loop {
+                            if client_state.stopped() {
+                                break;
                             }
+
+                            if client.connected() {
+                                trace!("{} ping...", client.client_id());
+                                tokio::time::sleep(Duration::from_secs(1)).await;
+                                continue;
+                            }
+                            break;
                         }
-                        connected.fetch_add(1, SeqCst);
-                        total.fetch_add(1, Ordering::Relaxed);
                     });
                 }
 
                 loop {
-                    if total.load(Ordering::Relaxed) < common.total {
+                    if state.total() < common.total {
                         tokio::time::sleep(Duration::from_secs(1)).await;
                     } else {
                         break;
@@ -160,7 +139,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 // Attempt to signal task that is printing statistics.
                 if let Err(_e) = tx.send(()).await {
                     trace!("Should have received Ctrl-C signal");
-                    debug_assert_eq!(true, stopped.load(Ordering::Relaxed));
+                    debug_assert_eq!(true, state.stopped());
                 }
             }
             Commands::Pub {
@@ -169,8 +148,10 @@ async fn main() -> Result<(), anyhow::Error> {
                 message_size,
                 payload,
             } => {
+                let semaphore = Arc::new(tokio::sync::Semaphore::new(common.concurrency));
                 let client = mqtt_bench::client::Client::new(
                     common.clone(),
+                    Arc::clone(&semaphore),
                     "rust_client_id",
                     conn_histo,
                     pub_histo,
@@ -194,8 +175,10 @@ async fn main() -> Result<(), anyhow::Error> {
             }
 
             Commands::Sub { common, topic } => {
+                let semaphore = Arc::new(tokio::sync::Semaphore::new(common.concurrency));
                 let client = mqtt_bench::client::Client::new(
                     common.clone(),
+                    Arc::clone(&semaphore),
                     "rust_client_id",
                     conn_histo.clone(),
                     pub_histo.clone(),
