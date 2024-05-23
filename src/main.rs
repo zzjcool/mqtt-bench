@@ -19,6 +19,7 @@ use clap_help::Printer;
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     env_logger::init();
+    console_subscriber::init();
 
     let r = Registry::new();
 
@@ -135,6 +136,8 @@ async fn main() -> Result<(), anyhow::Error> {
                 if common.show_statistics {
                     show_statistics(&r);
                 }
+
+                tokio::time::sleep(Duration::from_secs(300)).await;
 
                 // Attempt to signal task that is printing statistics.
                 if let Err(_e) = tx.send(()).await {
