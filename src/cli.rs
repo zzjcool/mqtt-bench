@@ -1,18 +1,15 @@
 use clap::{Args, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
-#[command(name = "mqtt-bench", author, version, about, long_about = None, disable_help_flag = true)]
+#[command(name = "mqtt-bench", author, version, about, long_about = None)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
-
-    #[arg(long)]
-    pub help: bool,
 }
 
 #[derive(Debug, Clone, Args)]
 pub struct Common {
-    #[arg(short = 'h', long)]
+    #[arg(long)]
     pub host: String,
 
     #[arg(short = 'p', long)]

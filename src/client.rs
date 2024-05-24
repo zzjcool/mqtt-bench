@@ -1,10 +1,9 @@
 use super::cli::Common;
+use crate::statistics::LatencyHistogram;
 use anyhow::Context;
 use log::{debug, info};
 use mqtt::AsyncClient;
 use paho_mqtt as mqtt;
-use prometheus::Histogram;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 use tokio::time::Instant;
@@ -13,9 +12,7 @@ pub struct Client {
     opts: Common,
     connect_semaphore: Arc<Semaphore>,
     pub inner: AsyncClient,
-    conn_histo: Histogram,
-    pub_histo: Histogram,
-    sub_histo: Histogram,
+    latency: LatencyHistogram,
 }
 
 impl Client {
@@ -23,9 +20,7 @@ impl Client {
         opts: Common,
         connect_semaphore: Arc<Semaphore>,
         client_id: &str,
-        conn_histo: Histogram,
-        pub_histo: Histogram,
-        sub_histo: Histogram,
+        latency: LatencyHistogram,
     ) -> Result<Self, anyhow::Error> {
         let server_uri = if opts.ssl {
             format!("ssl://{}:{}", opts.host, opts.port.unwrap_or(8883))
@@ -42,13 +37,12 @@ impl Client {
             .allow_disconnected_send_at_anytime(false)
             .finalize();
 
-        let client =
-            mqtt::AsyncClient::new(create_opts).context("Failed to create MQTT AsyncClient")?;
-        let e2e_histo = sub_histo.clone();
+        let client = AsyncClient::new(create_opts).context("Failed to create MQTT AsyncClient")?;
+        let e2e_histogram = latency.subscribe.clone();
         client.set_message_callback(move |_client, message| {
             if let Some(message) = message {
                 info!("Received message, topic={}", message.topic());
-                e2e_histo.observe(1 as f64);
+                e2e_histogram.observe(1f64);
             }
         });
 
@@ -56,9 +50,7 @@ impl Client {
             opts,
             connect_semaphore,
             inner: client,
-            conn_histo,
-            pub_histo,
-            sub_histo,
+            latency,
         })
     }
 
@@ -105,7 +97,8 @@ impl Client {
             .connect(connect_opts)
             .await
             .context("Failed to connect to the MQTT server")?;
-        self.conn_histo
+        self.latency
+            .connect
             .observe(instant.elapsed().as_millis() as f64);
         Ok(())
     }
@@ -121,7 +114,9 @@ impl Client {
             .publish(message)
             .await
             .context("Failed to publish message");
-        self.pub_histo.observe(instant.elapsed().as_millis() as f64);
+        self.latency
+            .publish
+            .observe(instant.elapsed().as_millis() as f64);
         pub_result
     }
 
