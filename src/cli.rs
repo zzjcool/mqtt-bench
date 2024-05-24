@@ -41,9 +41,13 @@ pub struct Common {
     #[arg(short = 'c', long, default_value_t = 4)]
     pub concurrency: usize,
 
-    /// The interval between creating a new client in milliseconds
+    /// The interval between each message publishing for each client in milliseconds.
     #[arg(short = 'i', long, default_value_t = 100)]
     pub interval: u64,
+
+    /// The duration of the test in seconds.
+    #[arg(long, default_value_t = 60)]
+    pub time: usize,
 
     #[arg(long, default_value_t = String::from("bench-client-%d"))]
     pub client_id: String,
@@ -62,6 +66,18 @@ impl Common {
     }
 }
 
+#[derive(Debug, Clone, Args)]
+pub struct PubOptions {
+    #[arg(long)]
+    pub topic: String,
+
+    #[arg(long, default_value_t = 64)]
+    pub message_size: u32,
+
+    #[arg(long)]
+    pub payload: Option<String>,
+}
+
 #[derive(Subcommand, Debug)]
 pub enum Commands {
     Connect {
@@ -73,14 +89,8 @@ pub enum Commands {
         #[command(flatten)]
         common: Common,
 
-        #[arg(long)]
-        topic: String,
-
-        #[arg(long, default_value_t = 64)]
-        message_size: u32,
-
-        #[arg(long)]
-        payload: Option<String>,
+        #[command(flatten)]
+        pub_options: PubOptions,
     },
 
     Sub {

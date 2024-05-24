@@ -71,7 +71,7 @@ pub fn print_stats(state: Arc<State>, mut rx: Receiver<()>) {
                     }
                     _ = sleep(Duration::from_secs(1)) => {
                         info!("{} client(s) connected", state.connected());
-                        if state.stop_flag().load(Ordering::Relaxed) {
+                        if state.stopped() {
                             break;
                         }
                     }

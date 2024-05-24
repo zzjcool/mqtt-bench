@@ -3,13 +3,13 @@ use std::{sync::Arc, time::Duration};
 use anyhow::Context;
 use clap::Parser;
 use log::{info, trace};
-use paho_mqtt as mqtt;
 
 use mqtt_bench::cli::{Cli, Commands};
 use mqtt_bench::state::{ctrl_c, print_stats, State};
 
-use mqtt_bench::command::connect;
+use mqtt_bench::command::{connect, publish};
 use mqtt_bench::statistics::Statistics;
+use tokio::sync::Semaphore;
 use tokio::{sync::mpsc::channel, time::sleep};
 
 #[tokio::main]
@@ -34,36 +34,13 @@ async fn main() -> Result<(), anyhow::Error> {
             }
             Commands::Pub {
                 common,
-                topic,
-                message_size,
-                payload,
+                pub_options,
             } => {
-                let semaphore = Arc::new(tokio::sync::Semaphore::new(common.concurrency));
-                let client = mqtt_bench::client::Client::new(
-                    common.clone(),
-                    Arc::clone(&semaphore),
-                    "rust_client_id",
-                    statistics.latency.clone(),
-                )
-                .context("Failed to create MQTT client")?;
-                client.connect().await?;
-                info!(
-                    "Connection to {} established with client-id={}",
-                    common.connection_string(),
-                    client.client_id()
-                );
-
-                let message = mqtt::MessageBuilder::new()
-                    .topic(&topic)
-                    .payload(payload.unwrap_or_else(|| "a".repeat(message_size as usize)))
-                    .qos(common.qos)
-                    .finalize();
-                client.publish(message).await?;
-                info!("Published Message OK");
+                publish(&common, &state, &statistics, &pub_options).await?;
             }
 
             Commands::Sub { common, topic } => {
-                let semaphore = Arc::new(tokio::sync::Semaphore::new(common.concurrency));
+                let semaphore = Arc::new(Semaphore::new(common.concurrency));
                 let client = mqtt_bench::client::Client::new(
                     common.clone(),
                     Arc::clone(&semaphore),
