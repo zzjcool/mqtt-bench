@@ -63,5 +63,10 @@ pub async fn connect(common: &Common, state: &Arc<State>, statistics: &Statistic
         statistics.show_statistics();
     }
 
-    tokio::time::sleep(Duration::from_secs(300)).await;
+    for _ in 0..300 {
+        if state.stopped() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
 }
