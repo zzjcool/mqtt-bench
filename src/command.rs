@@ -127,6 +127,7 @@ pub async fn publish(
                             error!("Failed to publish message: {}", e.to_string());
                             break;
                         }
+                        client_state.on_publish();
 
                         if pub_interval.as_millis() > 0 {
                             tokio::time::sleep(pub_interval).await;

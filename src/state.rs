@@ -9,6 +9,8 @@ pub struct State {
     connected: AtomicUsize,
     total: AtomicUsize,
     stopped: AtomicBool,
+    published: AtomicUsize,
+    received: AtomicUsize,
 }
 
 impl State {
@@ -17,6 +19,8 @@ impl State {
             connected: AtomicUsize::new(0),
             total: AtomicUsize::new(0),
             stopped: AtomicBool::new(false),
+            published: AtomicUsize::new(0),
+            received: AtomicUsize::new(0),
         };
         Arc::new(state)
     }
@@ -40,6 +44,22 @@ impl State {
     pub fn on_connected(&self) {
         self.total.fetch_add(1, Ordering::Relaxed);
         self.connected.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn on_publish(&self) {
+        self.published.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn published(&self) -> usize {
+        self.published.load(Ordering::Relaxed)
+    }
+
+    pub fn on_receive(&self) {
+        self.received.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn received(&self) -> usize {
+        self.received.load(Ordering::Relaxed)
     }
 
     pub fn stop_flag(&self) -> &AtomicBool {
@@ -70,7 +90,7 @@ pub fn print_stats(state: Arc<State>, mut rx: Receiver<()>) {
                         break;
                     }
                     _ = sleep(Duration::from_secs(1)) => {
-                        info!("{} client(s) connected", state.connected());
+                        info!("{} client(s) connected, {} message(s) published", state.connected(), state.published());
                         if state.stopped() {
                             break;
                         }
