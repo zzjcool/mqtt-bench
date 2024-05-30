@@ -90,7 +90,7 @@ pub fn print_stats(state: Arc<State>, mut rx: Receiver<()>) {
                         break;
                     }
                     _ = sleep(Duration::from_secs(1)) => {
-                        info!("{} client(s) connected, {} message(s) published", state.connected(), state.published());
+                        info!("{} client(s) connected, {} message(s) published, {} messages received.", state.connected(), state.published(), state.received());
                         if state.stopped() {
                             break;
                         }

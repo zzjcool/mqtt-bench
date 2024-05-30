@@ -1,16 +1,14 @@
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
-use anyhow::Context;
 use clap::Parser;
 use log::{info, trace};
 
 use mqtt_bench::cli::{Cli, Commands};
 use mqtt_bench::state::{ctrl_c, print_stats, State};
 
-use mqtt_bench::command::{connect, publish};
+use mqtt_bench::command::{connect, publish, subscribe};
 use mqtt_bench::statistics::Statistics;
-use tokio::sync::Semaphore;
-use tokio::{sync::mpsc::channel, time::sleep};
+use tokio::sync::mpsc::channel;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -39,7 +37,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 if 0 == pub_options.topic_number {
                     pub_options.topic_number = common.total;
                     info!(
-                        "Now that --topic-number is 0, it will be set to --total={}",
+                        "Now that --topic-number is 0, it will be set to --topic-number={}",
                         common.total
                     );
                 }
@@ -47,26 +45,19 @@ async fn main() -> Result<(), anyhow::Error> {
                 publish(&common, &state, &statistics, &pub_options).await?;
             }
 
-            Commands::Sub { common, topic } => {
-                let semaphore = Arc::new(Semaphore::new(common.concurrency));
-                let client = mqtt_bench::client::Client::new(
-                    common.clone(),
-                    Arc::clone(&semaphore),
-                    "rust_client_id",
-                    statistics.latency.clone(),
-                )
-                .context("Failed to create MQTT client")?;
-                client.connect().await?;
-                info!(
-                    "Connection to {} established with client-id={}",
-                    common.connection_string(),
-                    client.client_id()
-                );
-                client.subscribe(&topic, common.qos).await?;
-                info!("Subscribed to topic {}", topic);
-                loop {
-                    sleep(Duration::from_secs(1)).await;
+            Commands::Sub {
+                common,
+                mut sub_options,
+            } => {
+                if 0 == sub_options.topic_number {
+                    sub_options.topic_number = common.total;
+                    info!(
+                        "Now that --topic-number is 0, it will be set to --topic-number={}",
+                        common.total
+                    );
                 }
+
+                subscribe(&common, &state, &statistics, &sub_options).await?;
             }
         },
 

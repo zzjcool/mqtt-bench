@@ -92,6 +92,21 @@ pub struct PubOptions {
     pub payload: Option<String>,
 }
 
+#[derive(Debug, Clone, Args)]
+pub struct SubOptions {
+    #[arg(long)]
+    pub topic: String,
+
+    /// If `topic` contains `%i`, this is the number of topics to publish messages to.
+    ///
+    /// If `topic_number` is less than number of the clients: `total`, the topics will be reused; Alternatively, if the `topic_number` is greater than the number of clients,
+    /// only the first `total` topics will be used during the benchmark.
+    ///
+    /// If `topic_number` is 0, it will be set to `total`.
+    #[arg(long, default_value_t = 0)]
+    pub topic_number: usize,
+}
+
 #[derive(Subcommand, Debug)]
 pub enum Commands {
     Connect {
@@ -111,7 +126,7 @@ pub enum Commands {
         #[command(flatten)]
         common: Common,
 
-        #[arg(long)]
-        topic: String,
+        #[command(flatten)]
+        sub_options: SubOptions,
     },
 }

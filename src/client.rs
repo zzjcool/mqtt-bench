@@ -1,4 +1,5 @@
 use super::cli::Common;
+use crate::state::State;
 use crate::statistics::LatencyHistogram;
 use anyhow::Context;
 use log::{debug, info, trace};
@@ -13,6 +14,7 @@ pub struct Client {
     connect_semaphore: Arc<Semaphore>,
     pub inner: AsyncClient,
     latency: LatencyHistogram,
+    state: Arc<State>,
 }
 
 impl Client {
@@ -21,6 +23,7 @@ impl Client {
         connect_semaphore: Arc<Semaphore>,
         client_id: &str,
         latency: LatencyHistogram,
+        state: Arc<State>,
     ) -> Result<Self, anyhow::Error> {
         let server_uri = if opts.ssl {
             format!("ssl://{}:{}", opts.host, opts.port.unwrap_or(8883))
@@ -39,9 +42,11 @@ impl Client {
 
         let client = AsyncClient::new(create_opts).context("Failed to create MQTT AsyncClient")?;
         let e2e_histogram = latency.subscribe.clone();
+        let _state = Arc::clone(&state);
         client.set_message_callback(move |_client, message| {
             if let Some(message) = message {
-                info!("Received message, topic={}", message.topic());
+                _state.on_receive();
+                trace!("Received message, topic={}", message.topic());
                 e2e_histogram.observe(1f64);
             }
         });
@@ -51,6 +56,7 @@ impl Client {
             connect_semaphore,
             inner: client,
             latency,
+            state,
         })
     }
 
@@ -91,15 +97,21 @@ impl Client {
             .acquire()
             .await
             .context("Failed to acquire connect permit")?;
+
         let instant = Instant::now();
-        let _connect_result = self
+        if let Err(e) = self
             .inner
             .connect(connect_opts)
             .await
-            .context("Failed to connect to the MQTT server")?;
+            .context("Failed to connect to the MQTT server")
+        {
+            self.state.on_connect_failure();
+            return Err(e);
+        }
         self.latency
             .connect
             .observe(instant.elapsed().as_millis() as f64);
+        self.state.on_connected();
         Ok(())
     }
 
@@ -110,16 +122,21 @@ impl Client {
     pub async fn publish(&self, message: mqtt::Message) -> Result<(), anyhow::Error> {
         let topic = message.topic().to_owned();
         let instant = Instant::now();
-        let pub_result = self
+        if let Err(e) = self
             .inner
             .publish(message)
             .await
-            .context("Failed to publish message");
+            .context("Failed to publish message")
+        {
+            // TODO: count publish failure.
+            return Err(e);
+        }
         self.latency
             .publish
             .observe(instant.elapsed().as_millis() as f64);
+        self.state.on_publish();
         trace!("{} published a message to {}", self.client_id(), topic);
-        pub_result
+        Ok(())
     }
 
     pub async fn subscribe(&self, topic: &str, qos: i32) -> Result<(), anyhow::Error> {
