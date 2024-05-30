@@ -174,3 +174,13 @@ impl Client {
         Ok(())
     }
 }
+
+impl Drop for Client {
+    fn drop(&mut self) {
+        if self.connected() {
+            if let Err(e) = self.inner.disconnect(None).wait() {
+                error!("Failed to disconnect client: {}", e);
+            }
+        }
+    }
+}
