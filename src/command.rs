@@ -14,6 +14,10 @@ use tokio::sync::Semaphore;
 pub async fn connect(common: &Common, state: &Arc<State>, statistics: &Statistics) {
     let semaphore = Arc::new(Semaphore::new(common.concurrency));
     for id in 0..common.total {
+        if state.stopped() {
+            break;
+        }
+
         let client = match crate::client::Client::new(
             common.clone(),
             Arc::clone(&semaphore),
@@ -55,19 +59,25 @@ pub async fn connect(common: &Common, state: &Arc<State>, statistics: &Statistic
             });
     }
 
-    loop {
-        if state.total() < common.total {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-        } else {
-            break;
-        }
-    }
-
+    await_connection(common.total, state).await;
     await_running(common, state).await;
 
     if common.show_statistics {
         statistics.show_statistics();
     }
+}
+
+/// Await clients to connect.
+///
+async fn await_connection(total: usize, state: &Arc<State>) {
+    loop {
+        if state.total() < total && !state.stopped() {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        } else {
+            break;
+        }
+    }
+    info!("All clients have connected and it is time to count down running time.");
 }
 
 pub async fn publish(
@@ -153,14 +163,7 @@ pub async fn publish(
             });
     }
 
-    loop {
-        if state.total() < common.total {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-        } else {
-            break;
-        }
-    }
-
+    await_connection(common.total, state).await;
     await_running(common, state).await;
 
     if common.show_statistics {
@@ -231,14 +234,7 @@ pub async fn subscribe(
             });
     }
 
-    loop {
-        if state.total() < common.total {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-        } else {
-            break;
-        }
-    }
-
+    await_connection(common.total, state).await;
     await_running(common, state).await;
 
     if common.show_statistics {
@@ -336,14 +332,7 @@ pub async fn benchmark(
             });
     }
 
-    loop {
-        if state.total() < common.total {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-        } else {
-            break;
-        }
-    }
-
+    await_connection(common.total, state).await;
     await_running(common, state).await;
 
     if common.show_statistics {
