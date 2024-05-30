@@ -79,8 +79,6 @@ pub fn ctrl_c(state: Arc<State>) {
                 info!("Ctrl-C received, stopping");
                 state.stop_flag().store(true, Ordering::Relaxed);
             }
-            tokio::signal::ctrl_c().await.unwrap();
-            state.stop_flag().store(true, Ordering::Relaxed);
         });
 }
 
