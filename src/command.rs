@@ -3,7 +3,7 @@ use crate::state::State;
 use crate::statistics::Statistics;
 use anyhow::Context;
 use byteorder::WriteBytesExt;
-use log::{error, info, trace, warn};
+use log::{debug, error, info, trace, warn};
 use paho_mqtt::MessageBuilder;
 use std::io::Cursor;
 use std::mem::size_of;
@@ -72,12 +72,18 @@ pub async fn connect(common: &Common, state: &Arc<State>, statistics: &Statistic
 async fn await_connection(total: usize, state: &Arc<State>) {
     loop {
         if state.total() < total && !state.stopped() {
+            debug!("{}/{} clients have connected", state.total(), total);
             tokio::time::sleep(Duration::from_secs(1)).await;
         } else {
             break;
         }
     }
-    info!("All clients have connected and it is time to count down running time.");
+
+    if !state.stopped() {
+        info!("All clients have connected and it is time to count down running time.");
+    } else {
+        info!("Got signal to stop.");
+    }
 }
 
 pub async fn publish(
