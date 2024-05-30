@@ -129,4 +129,12 @@ pub enum Commands {
         #[command(flatten)]
         sub_options: SubOptions,
     },
+
+    Benchmark {
+        #[command(flatten)]
+        common: Common,
+
+        #[command(flatten)]
+        pub_options: PubOptions,
+    },
 }

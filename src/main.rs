@@ -6,7 +6,7 @@ use log::{info, trace};
 use mqtt_bench::cli::{Cli, Commands};
 use mqtt_bench::state::{ctrl_c, print_stats, State};
 
-use mqtt_bench::command::{connect, publish, subscribe};
+use mqtt_bench::command::{benchmark, connect, publish, subscribe};
 use mqtt_bench::statistics::Statistics;
 use tokio::sync::mpsc::channel;
 
@@ -58,6 +58,21 @@ async fn main() -> Result<(), anyhow::Error> {
                 }
 
                 subscribe(&common, &state, &statistics, &sub_options).await?;
+            }
+
+            Commands::Benchmark {
+                common,
+                mut pub_options,
+            } => {
+                if 0 == pub_options.topic_number {
+                    pub_options.topic_number = common.total;
+                    info!(
+                        "Now that --topic-number is 0, it will be set to --topic-number={}",
+                        common.total
+                    );
+                }
+
+                benchmark(&common, &state, &statistics, &pub_options).await?;
             }
         },
 
