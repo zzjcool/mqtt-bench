@@ -119,6 +119,10 @@ impl Client {
             .await
             .context("Failed to acquire connect permit")?;
 
+        if self.state.stopped() {
+            return Ok(());
+        }
+
         let instant = Instant::now();
         if let Err(e) = self
             .inner
