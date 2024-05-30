@@ -54,6 +54,10 @@ impl State {
         self.published.load(Ordering::Relaxed)
     }
 
+    pub fn on_publish_failure(&self) {
+        // self.published.fetch_add(1, Ordering::Relaxed);
+    }
+
     pub fn on_receive(&self) {
         self.received.fetch_add(1, Ordering::Relaxed);
     }

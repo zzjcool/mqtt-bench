@@ -2,10 +2,13 @@ use crate::cli::{Common, PubOptions, SubOptions};
 use crate::state::State;
 use crate::statistics::Statistics;
 use anyhow::Context;
+use byteorder::WriteBytesExt;
 use log::{error, info, trace, warn};
 use paho_mqtt::MessageBuilder;
+use std::io::Cursor;
+use std::mem::size_of;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 use tokio::sync::Semaphore;
 
 pub async fn connect(common: &Common, state: &Arc<State>, statistics: &Statistics) {
@@ -103,13 +106,8 @@ pub async fn publish(
             pub_options.topic.clone()
         };
 
-        let message = MessageBuilder::new()
-            .topic(&topic)
-            .payload(payload)
-            .qos(common.qos)
-            .finalize();
-
         let pub_interval = Duration::from_millis(common.interval);
+        let qos = common.qos;
 
         let client_state = Arc::clone(state);
         let _ = tokio::task::Builder::new()
@@ -120,7 +118,19 @@ pub async fn publish(
                     return;
                 }
 
+                let mut payload: Vec<u8> = payload.into();
+
                 loop {
+                    if let Err(e) = tag_timestamp(&mut payload[..]) {
+                        error!("{}", e.to_string());
+                        break;
+                    }
+
+                    let message = MessageBuilder::new()
+                        .topic(&topic)
+                        .payload(&payload[..])
+                        .qos(qos)
+                        .finalize();
                     if client_state.stopped() {
                         info!("Benchmark has stopped");
                         break;
@@ -273,12 +283,6 @@ pub async fn benchmark(
             pub_options.topic.clone()
         };
 
-        let message = MessageBuilder::new()
-            .topic(&topic)
-            .payload(payload)
-            .qos(common.qos)
-            .finalize();
-
         let pub_interval = Duration::from_millis(common.interval);
         let qos = common.qos;
 
@@ -296,11 +300,24 @@ pub async fn benchmark(
                     return;
                 }
 
+                let mut payload: Vec<u8> = payload.into();
+
                 loop {
                     if client_state.stopped() {
                         info!("Benchmark has stopped");
                         break;
                     }
+
+                    if let Err(e) = tag_timestamp(&mut payload[..]) {
+                        error!("{}", e.to_string());
+                        break;
+                    }
+
+                    let message = MessageBuilder::new()
+                        .topic(&topic)
+                        .payload(&payload[..])
+                        .qos(qos)
+                        .finalize();
 
                     if client.connected() {
                         if let Err(e) = client.publish(message.clone()).await {
@@ -341,5 +358,44 @@ async fn await_running(common: &Common, state: &Arc<State>) {
             break;
         }
         tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+}
+
+fn tag_timestamp(data: &mut [u8]) -> anyhow::Result<()> {
+    if data.len() < size_of::<u128>() {
+        return Ok(());
+    }
+
+    let ts = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+
+    let mut cursor = Cursor::new(data);
+    cursor
+        .write_u128::<byteorder::LittleEndian>(ts)
+        .context("Failed to tag timestamp")?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+
+    use byteorder::ReadBytesExt;
+
+    #[test]
+    fn test_tag_timestamp() -> anyhow::Result<()> {
+        let mut data = [0u8; 32];
+        super::tag_timestamp(&mut data)?;
+
+        let mut cursor = Cursor::new(&data);
+        let ts = cursor.read_u128::<byteorder::LittleEndian>()?;
+
+        let current_ts = std::time::SystemTime::now()
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)?
+            .as_millis();
+        assert!(current_ts - ts < 100);
+        Ok(())
     }
 }

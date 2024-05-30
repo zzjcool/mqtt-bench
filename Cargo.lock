@@ -937,6 +937,8 @@ name = "mqtt-bench"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "byteorder",
+ "bytes",
  "clap",
  "clap-help",
  "console-subscriber",

@@ -2,10 +2,14 @@ use super::cli::Common;
 use crate::state::State;
 use crate::statistics::LatencyHistogram;
 use anyhow::Context;
-use log::{debug, info, trace};
+use byteorder::ReadBytesExt;
+use bytes::Buf;
+use log::{debug, error, info, trace};
 use mqtt::AsyncClient;
 use paho_mqtt as mqtt;
+use std::io::Cursor;
 use std::sync::Arc;
+use std::time::SystemTime;
 use tokio::sync::Semaphore;
 use tokio::time::Instant;
 
@@ -46,8 +50,25 @@ impl Client {
         client.set_message_callback(move |_client, message| {
             if let Some(message) = message {
                 _state.on_receive();
+                let payload = message.payload();
+                let mut cursor = Cursor::new(payload);
+                if cursor.remaining() > std::mem::size_of::<u128>() {
+                    match cursor.read_u128::<byteorder::LittleEndian>() {
+                        Ok(ts) => {
+                            let now = SystemTime::now()
+                                .duration_since(SystemTime::UNIX_EPOCH)
+                                .unwrap()
+                                .as_millis();
+                            if now >= ts {
+                                e2e_histogram.observe((now - ts) as f64);
+                            }
+                        }
+                        Err(e) => {
+                            error!("Failed to read timestamp from payload: {}", e);
+                        }
+                    }
+                }
                 trace!("Received message, topic={}", message.topic());
-                e2e_histogram.observe(1f64);
             }
         });
 
@@ -128,9 +149,10 @@ impl Client {
             .await
             .context("Failed to publish message")
         {
-            // TODO: count publish failure.
+            self.state.on_publish_failure();
             return Err(e);
         }
+
         self.latency
             .publish
             .observe(instant.elapsed().as_millis() as f64);
