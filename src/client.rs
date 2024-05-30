@@ -1,7 +1,7 @@
 use super::cli::Common;
 use crate::statistics::LatencyHistogram;
 use anyhow::Context;
-use log::{debug, info};
+use log::{debug, info, trace};
 use mqtt::AsyncClient;
 use paho_mqtt as mqtt;
 use std::sync::Arc;
@@ -108,6 +108,7 @@ impl Client {
     }
 
     pub async fn publish(&self, message: mqtt::Message) -> Result<(), anyhow::Error> {
+        let topic = message.topic().to_owned();
         let instant = Instant::now();
         let pub_result = self
             .inner
@@ -117,6 +118,7 @@ impl Client {
         self.latency
             .publish
             .observe(instant.elapsed().as_millis() as f64);
+        trace!("{} published a message to {}", self.client_id(), topic);
         pub_result
     }
 

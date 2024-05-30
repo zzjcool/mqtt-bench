@@ -97,8 +97,15 @@ pub async fn publish(
             .clone()
             .unwrap_or_else(|| "a".repeat(pub_options.message_size as usize));
 
+        let topic = if pub_options.topic.contains("%i") {
+            let idx = id % pub_options.topic_number;
+            pub_options.topic.replace("%i", &idx.to_string())
+        } else {
+            pub_options.topic.clone()
+        };
+
         let message = MessageBuilder::new()
-            .topic(&pub_options.topic)
+            .topic(&topic)
             .payload(payload)
             .qos(common.qos)
             .finalize();

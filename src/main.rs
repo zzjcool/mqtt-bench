@@ -34,8 +34,16 @@ async fn main() -> Result<(), anyhow::Error> {
             }
             Commands::Pub {
                 common,
-                pub_options,
+                mut pub_options,
             } => {
+                if 0 == pub_options.topic_number {
+                    pub_options.topic_number = common.total;
+                    info!(
+                        "Now that --topic-number is 0, it will be set to --total={}",
+                        common.total
+                    );
+                }
+
                 publish(&common, &state, &statistics, &pub_options).await?;
             }
 

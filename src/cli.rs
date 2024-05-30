@@ -68,8 +68,22 @@ impl Common {
 
 #[derive(Debug, Clone, Args)]
 pub struct PubOptions {
+    /// Topic pattern to publish messages to.
+    ///
+    /// The topic pattern can contain a `%i` placeholder which will be replaced by an ID.
+    ///
+    /// For example, if the topic pattern is `topic/%i`, the actual topic will be `topic/0`, `topic/1`, etc.
     #[arg(long)]
     pub topic: String,
+
+    /// If `topic` contains `%i`, this is the number of topics to publish messages to.
+    ///
+    /// If `topic_number` is less than number of the clients: `total`, the topics will be reused; Alternatively, if the `topic_number` is greater than the number of clients,
+    /// only the first `total` topics will be used during the benchmark.
+    ///
+    /// If `topic_number` is 0, it will be set to `total`.
+    #[arg(long, default_value_t = 0)]
+    pub topic_number: usize,
 
     #[arg(long, default_value_t = 64)]
     pub message_size: u32,
