@@ -9,7 +9,7 @@ use mqtt::AsyncClient;
 use paho_mqtt as mqtt;
 use std::io::Cursor;
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 use tokio::sync::Semaphore;
 use tokio::time::Instant;
 
@@ -90,8 +90,9 @@ impl Client {
             .clean_session(true)
             .user_name(&self.opts.user_name)
             .password(&self.opts.password)
-            .connect_timeout(std::time::Duration::from_secs(5))
-            .keep_alive_interval(std::time::Duration::from_secs(3))
+            .connect_timeout(Duration::from_secs(self.opts.connect_timeout))
+            .keep_alive_interval(Duration::from_secs(self.opts.keep_alive_interval))
+            .max_inflight(self.opts.max_inflight)
             .ssl_options(
                 mqtt::SslOptionsBuilder::new()
                     .verify(self.opts.verify)

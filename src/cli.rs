@@ -54,6 +54,15 @@ pub struct Common {
 
     #[arg(long)]
     pub show_statistics: bool,
+
+    #[arg(long, default_value_t = 5)]
+    pub connect_timeout: u64,
+
+    #[arg(long, default_value_t = 3)]
+    pub keep_alive_interval: u64,
+
+    #[arg(long, default_value_t = 1024)]
+    pub max_inflight: i32,
 }
 
 impl Common {
