@@ -12,7 +12,10 @@ use tokio::sync::mpsc::channel;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    env_logger::init();
+    env_logger::builder()
+    .format_timestamp_millis()
+    .init();
+
     console_subscriber::init();
 
     let cli = Cli::parse();
