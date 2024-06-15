@@ -10,12 +10,11 @@ use paho_mqtt as mqtt;
 use std::io::Cursor;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-use tokio::sync::Semaphore;
+use tokio::sync::OwnedSemaphorePermit;
 use tokio::time::Instant;
 
 pub struct Client {
     opts: Common,
-    connect_semaphore: Arc<Semaphore>,
     pub inner: AsyncClient,
     latency: LatencyHistogram,
     state: Arc<State>,
@@ -24,7 +23,6 @@ pub struct Client {
 impl Client {
     pub fn new(
         opts: Common,
-        connect_semaphore: Arc<Semaphore>,
         client_id: &str,
         latency: LatencyHistogram,
         state: Arc<State>,
@@ -74,7 +72,6 @@ impl Client {
 
         Ok(Self {
             opts,
-            connect_semaphore,
             inner: client,
             latency,
             state,
@@ -85,7 +82,7 @@ impl Client {
         self.inner.client_id()
     }
 
-    pub async fn connect(&self) -> Result<(), anyhow::Error> {
+    pub async fn connect(&self, _permit: OwnedSemaphorePermit) -> Result<(), anyhow::Error> {
         let connect_opts = mqtt::ConnectOptionsBuilder::new_v3()
             .clean_session(true)
             .user_name(&self.opts.user_name)
@@ -113,12 +110,6 @@ impl Client {
         self.inner.set_connection_lost_callback(|c| {
             info!("Connection lost client-id: {}", c.client_id());
         });
-
-        let _permit = self
-            .connect_semaphore
-            .acquire()
-            .await
-            .context("Failed to acquire connect permit")?;
 
         if self.state.stopped() {
             return Ok(());

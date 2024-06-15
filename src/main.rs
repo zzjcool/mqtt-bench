@@ -12,9 +12,7 @@ use tokio::sync::mpsc::channel;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    env_logger::builder()
-    .format_timestamp_millis()
-    .init();
+    env_logger::builder().format_timestamp_millis().init();
 
     console_subscriber::init();
 
@@ -31,7 +29,7 @@ async fn main() -> Result<(), anyhow::Error> {
     match cli.command {
         Some(cmd) => match cmd {
             Commands::Connect { common } => {
-                connect(&common, &state, &statistics).await;
+                connect(&common, &state, &statistics).await?;
             }
             Commands::Pub {
                 common,

@@ -11,16 +11,24 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::Semaphore;
 
-pub async fn connect(common: &Common, state: &Arc<State>, statistics: &Statistics) {
+pub async fn connect(
+    common: &Common,
+    state: &Arc<State>,
+    statistics: &Statistics,
+) -> Result<(), anyhow::Error> {
     let semaphore = Arc::new(Semaphore::new(common.concurrency));
     for id in 0..common.total {
         if state.stopped() {
             break;
         }
 
+        let permit = Arc::clone(&semaphore)
+            .acquire_owned()
+            .await
+            .context("Failed to acquire connect permit")?;
+
         let client = match crate::client::Client::new(
             common.clone(),
-            Arc::clone(&semaphore),
             &format!("client_{}", id),
             statistics.latency.clone(),
             Arc::clone(state),
@@ -39,7 +47,7 @@ pub async fn connect(common: &Common, state: &Arc<State>, statistics: &Statistic
         let _ = tokio::task::Builder::new()
             .name(&client.client_id())
             .spawn(async move {
-                if let Err(e) = client.connect().await {
+                if let Err(e) = client.connect(permit).await {
                     error!("{}", e.to_string());
                     return;
                 }
@@ -65,6 +73,7 @@ pub async fn connect(common: &Common, state: &Arc<State>, statistics: &Statistic
     if common.show_statistics {
         statistics.show_statistics();
     }
+    Ok(())
 }
 
 /// Await clients to connect.
@@ -94,9 +103,15 @@ pub async fn publish(
 ) -> Result<(), anyhow::Error> {
     let semaphore = Arc::new(Semaphore::new(common.concurrency));
     for id in 0..common.total {
+        if state.stopped() {
+            break;
+        }
+        let permit = Arc::clone(&semaphore)
+            .acquire_owned()
+            .await
+            .context("Failed to acquire publish permit")?;
         let client = match crate::client::Client::new(
             common.clone(),
-            Arc::clone(&semaphore),
             &format!("client_{}", id),
             statistics.latency.clone(),
             Arc::clone(state),
@@ -109,7 +124,6 @@ pub async fn publish(
                 break;
             }
         };
-
         let payload = pub_options
             .payload
             .clone()
@@ -129,7 +143,7 @@ pub async fn publish(
         let _ = tokio::task::Builder::new()
             .name(&client.client_id())
             .spawn(async move {
-                if let Err(e) = client.connect().await {
+                if let Err(e) = client.connect(permit).await {
                     error!("{}", e.to_string());
                     return;
                 }
@@ -186,9 +200,15 @@ pub async fn subscribe(
 ) -> Result<(), anyhow::Error> {
     let semaphore = Arc::new(Semaphore::new(common.concurrency));
     for id in 0..common.total {
+        if state.stopped() {
+            break;
+        }
+        let permit = Arc::clone(&semaphore)
+            .acquire_owned()
+            .await
+            .context("Failed to acquire subscribe permit")?;
         let client = match crate::client::Client::new(
             common.clone(),
-            Arc::clone(&semaphore),
             &format!("client_{}", id),
             statistics.latency.clone(),
             Arc::clone(state),
@@ -214,7 +234,7 @@ pub async fn subscribe(
         let _ = tokio::task::Builder::new()
             .name(&client.client_id())
             .spawn(async move {
-                if let Err(e) = client.connect().await {
+                if let Err(e) = client.connect(permit).await {
                     error!("{}", e.to_string());
                     return;
                 }
@@ -257,9 +277,15 @@ pub async fn benchmark(
 ) -> Result<(), anyhow::Error> {
     let semaphore = Arc::new(Semaphore::new(common.concurrency));
     for id in 0..common.total {
+        if state.stopped() {
+            break;
+        }
+        let permit = Arc::clone(&semaphore)
+            .acquire_owned()
+            .await
+            .context("Failed to acquire publish permit")?;
         let client = match crate::client::Client::new(
             common.clone(),
-            Arc::clone(&semaphore),
             &format!("client_{}", id),
             statistics.latency.clone(),
             Arc::clone(state),
@@ -292,7 +318,7 @@ pub async fn benchmark(
         let _ = tokio::task::Builder::new()
             .name(&client.client_id())
             .spawn(async move {
-                if let Err(e) = client.connect().await {
+                if let Err(e) = client.connect(permit).await {
                     error!("{}", e.to_string());
                     return;
                 }
