@@ -48,7 +48,7 @@ pub async fn connect(
             .name(&client.client_id())
             .spawn(async move {
                 if let Err(e) = client.connect(permit).await {
-                    error!("{}", e.to_string());
+                    error!("{:#?}", e);
                     return;
                 }
 
