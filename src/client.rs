@@ -4,7 +4,7 @@ use crate::statistics::LatencyHistogram;
 use anyhow::Context;
 use byteorder::ReadBytesExt;
 use bytes::Buf;
-use log::{debug, error, info, trace};
+use log::{error, info, trace};
 use mqtt::AsyncClient;
 use paho_mqtt as mqtt;
 use std::io::Cursor;
@@ -101,7 +101,7 @@ impl Client {
             .finalize();
 
         self.inner.set_connected_callback(|cli| {
-            debug!(
+            info!(
                 "Connected to server_uri={} with client-id={}",
                 cli.server_uri(),
                 cli.client_id()
