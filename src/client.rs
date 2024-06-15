@@ -90,6 +90,7 @@ impl Client {
             .connect_timeout(Duration::from_secs(self.opts.connect_timeout))
             .keep_alive_interval(Duration::from_secs(self.opts.keep_alive_interval))
             .max_inflight(self.opts.max_inflight)
+            .automatic_reconnect(Duration::from_millis(100), Duration::from_secs(3))
             .ssl_options(
                 mqtt::SslOptionsBuilder::new()
                     .verify(self.opts.verify)
