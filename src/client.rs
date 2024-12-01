@@ -4,13 +4,12 @@ use crate::statistics::LatencyHistogram;
 use anyhow::Context;
 use byteorder::ReadBytesExt;
 use bytes::Buf;
-use log::{error, info, trace};
+use log::{debug, error, info, trace};
 use mqtt::AsyncClient;
 use paho_mqtt as mqtt;
 use std::io::Cursor;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-use tokio::sync::OwnedSemaphorePermit;
 use tokio::time::Instant;
 
 pub struct Client {
@@ -82,7 +81,7 @@ impl Client {
         self.inner.client_id()
     }
 
-    pub async fn connect(&self, _permit: OwnedSemaphorePermit) -> Result<(), anyhow::Error> {
+    pub async fn connect(&self) -> Result<(), anyhow::Error> {
         let connect_opts = mqtt::ConnectOptionsBuilder::new_v3()
             .clean_session(true)
             .user_name(&self.opts.username)
@@ -100,20 +99,24 @@ impl Client {
             )
             .finalize();
 
-        self.inner.set_connected_callback(|cli| {
-            info!(
+        let connected_state = Arc::clone(&self.state);
+        self.inner.set_connected_callback(move |cli| {
+            debug!(
                 "Client[client-id={}] connected to server_uri={}",
                 cli.client_id(),
                 cli.server_uri()
             );
+            connected_state.on_connected();
         });
 
-        self.inner.set_connection_lost_callback(|c| {
+        let state_ = Arc::clone(&self.state);
+        self.inner.set_connection_lost_callback(move |c| {
             info!(
                 "Client[client-id={}] lost connection, reconnecting...",
                 c.client_id()
             );
             c.reconnect();
+            state_.on_disconnected();
         });
 
         if self.state.stopped() {
@@ -121,19 +124,14 @@ impl Client {
         }
 
         let instant = Instant::now();
-        if let Err(e) = self
-            .inner
+        self.inner
             .connect(connect_opts)
             .await
-            .context("Failed to connect to the MQTT server")
-        {
-            self.state.on_connect_failure();
-            return Err(e);
-        }
+            .context("Failed to connect to the MQTT server")?;
+        
         self.latency
             .connect
             .observe(instant.elapsed().as_millis() as f64);
-        self.state.on_connected();
         Ok(())
     }
 
@@ -167,7 +165,7 @@ impl Client {
             "Failed to subscribe to the topic={}, qos={}",
             topic, qos
         ))?;
-        info!("{} subscribed {} with qos={}", self.client_id(), topic, qos);
+        debug!("{} subscribed {} with qos={}", self.client_id(), topic, qos);
         Ok(())
     }
 }

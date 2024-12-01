@@ -10,6 +10,7 @@ use std::mem::size_of;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::Semaphore;
+use tokio::time::sleep;
 
 pub async fn connect(
     common: &Common,
@@ -37,7 +38,6 @@ pub async fn connect(
             Ok(client) => client,
             Err(e) => {
                 error!("{}", e.to_string());
-                state.on_connect_failure();
                 break;
             }
         };
@@ -46,22 +46,33 @@ pub async fn connect(
         let _ = tokio::task::Builder::new()
             .name(&client.client_id())
             .spawn(async move {
-                if let Err(e) = client.connect(permit).await {
-                    error!("{:#?}", e);
-                    return;
+                // Retry till client connected
+                loop {
+                    if client.connect().await.is_err() {
+                        if client_state.stopped() {
+                            break;
+                        }
+                        continue
+                    }
+                    break;
                 }
+                drop(permit);
 
+                let mut warning_count = 0;
                 loop {
                     if client_state.stopped() {
                         break;
                     }
 
                     if client.connected() {
-                        trace!("{} ping...", client.client_id());
+                        trace!("Client[client-id={}] ping...", client.client_id());
                         tokio::time::sleep(Duration::from_secs(1)).await;
                         continue;
                     }
-                    break;
+                    if warning_count % 100 == 0 {
+                        warn!("Client[client-id={}] is disconnected, awaiting reconnect", client.client_id());
+                    }
+                    warning_count += 1;
                 }
             });
     }
@@ -79,8 +90,8 @@ pub async fn connect(
 ///
 async fn await_connection(total: usize, state: &Arc<State>) {
     loop {
-        if state.total() < total && !state.stopped() {
-            debug!("{}/{} clients have connected", state.total(), total);
+        if state.connected() < total && !state.stopped() {
+            debug!("{}/{} clients have connected", state.connected(), total);
             tokio::time::sleep(Duration::from_secs(1)).await;
         } else {
             break;
@@ -137,13 +148,21 @@ pub async fn publish(
         let _ = tokio::task::Builder::new()
             .name(&client.client_id())
             .spawn(async move {
-                if let Err(e) = client.connect(permit).await {
-                    error!("{}", e.to_string());
-                    return;
+                // Retry till client connected
+                loop {
+                    if client.connect().await.is_err() {
+                        if client_state.stopped() {
+                            break;
+                        }
+                        continue
+                    }
+                    break;
                 }
+                drop(permit);
 
                 let mut payload: Vec<u8> = payload.into();
 
+                let mut warning_count = 0;
                 loop {
                     if let Err(e) = tag_timestamp(&mut payload[..]) {
                         error!("{}", e.to_string());
@@ -156,7 +175,6 @@ pub async fn publish(
                         .qos(qos)
                         .finalize();
                     if client_state.stopped() {
-                        info!("Benchmark has stopped");
                         break;
                     }
 
@@ -171,8 +189,10 @@ pub async fn publish(
                         }
                         continue;
                     }
-                    warn!("Client {} has disconnected", client.client_id());
-                    break;
+                    if warning_count % 100 == 0 {
+                        warn!("Client[client-id={}] is disconnected, awaiting reconnect", client.client_id());
+                    }
+                    warning_count += 1;
                 }
             });
     }
@@ -221,19 +241,33 @@ pub async fn subscribe(
         let _ = tokio::task::Builder::new()
             .name(&client.client_id())
             .spawn(async move {
-                if let Err(e) = client.connect(permit).await {
-                    error!("{}", e.to_string());
-                    return;
+                // Retry till client connected
+                loop {
+                    if client.connect().await.is_err() {
+                        if client_state.stopped() {
+                            break;
+                        }
+                        continue
+                    }
+                    break;
                 }
+                drop(permit);
 
-                if let Err(e) = client.subscribe(&topic, qos).await {
-                    error!("Failed to subscribe. Caused by: {}", e.to_string());
-                    return;
-                }
-
+                // Retry till client subscribed
                 loop {
                     if client_state.stopped() {
-                        info!("Benchmark has stopped");
+                        break;
+                    }
+                    if client.subscribe(&topic, qos).await.is_err() {
+                        sleep(Duration::from_millis(10)).await;
+                        continue;
+                    }
+                    break;
+                }
+
+                let mut warning_count = 0;
+                loop {
+                    if client_state.stopped() {
                         break;
                     }
 
@@ -241,8 +275,10 @@ pub async fn subscribe(
                         tokio::time::sleep(Duration::from_secs(1)).await;
                         continue;
                     }
-                    warn!("Client {} has disconnected", client.client_id());
-                    break;
+                    if warning_count % 100 == 0 {
+                        warn!("Client[client-id={}] is disconnected, awaiting reconnect", client.client_id());
+                    }
+                    warning_count += 1;
                 }
             });
     }
@@ -300,21 +336,36 @@ pub async fn benchmark(
         let _ = tokio::task::Builder::new()
             .name(&client.client_id())
             .spawn(async move {
-                if let Err(e) = client.connect(permit).await {
-                    error!("{}", e.to_string());
-                    return;
+                // Retry till client connected
+                loop {
+                    if let Err(e) = client.connect().await {
+                        error!("{}", e.to_string());
+                        if client_state.stopped() {
+                            break;
+                        }
+                        continue
+                    }
+                    break;
                 }
+                drop(permit);
 
-                if let Err(e) = client.subscribe(&topic, qos).await {
-                    error!("Failed to subscribe. Caused by: {}", e.to_string());
-                    return;
-                }
-
-                let mut payload: Vec<u8> = payload.into();
-
+                // Retry till client subscribed
                 loop {
                     if client_state.stopped() {
-                        info!("Benchmark has stopped");
+                        break;
+                    }
+                    if client.subscribe(&topic, qos).await.is_err() {
+                        sleep(Duration::from_millis(10)).await; 
+                        continue;
+                    }
+                    break;
+                }
+                
+                let mut payload: Vec<u8> = payload.into();
+
+                let mut warning_count = 0;
+                loop {
+                    if client_state.stopped() {
                         break;
                     }
 
@@ -330,8 +381,8 @@ pub async fn benchmark(
                         .finalize();
 
                     if client.connected() {
-                        if let Err(e) = client.publish(message.clone()).await {
-                            error!("Failed to publish message: {}", e.to_string());
+                        if let Err(_) = client.publish(message.clone()).await {
+                            client_state.on_publish_failure();
                             break;
                         }
 
@@ -340,8 +391,12 @@ pub async fn benchmark(
                         }
                         continue;
                     }
-                    warn!("Client {} has disconnected", client.client_id());
-                    break;
+                    
+                    if warning_count % 100 == 0 {
+                        warn!("Client[client-id={}] is disconnected, awaiting reconnect", client.client_id());                        
+                    }
+                    warning_count += 1;
+                    tokio::time::sleep(Duration::from_millis(10)).await;
                 }
             });
     }
@@ -356,9 +411,12 @@ pub async fn benchmark(
 }
 
 async fn await_running(common: &Common, state: &Arc<State>) {
-    for _ in 0..common.time {
+    for i in 0..common.time {
         if state.stopped() {
             break;
+        }
+        if i % 10 == 0 {
+            debug!("Running {}s, {}s to go", i, common.time - i);
         }
         tokio::time::sleep(Duration::from_secs(1)).await;
     }

@@ -8,7 +8,7 @@ use mqtt_bench::state::{ctrl_c, print_stats, State};
 
 use mqtt_bench::command::{benchmark, connect, publish, subscribe};
 use mqtt_bench::statistics::Statistics;
-use tokio::sync::mpsc::channel;
+use tokio::sync::mpsc::{channel, Receiver};
 
 #[cfg(not(target_env = "msvc"))]
 use tikv_jemallocator::Jemalloc;
@@ -17,6 +17,11 @@ use tikv_jemallocator::Jemalloc;
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
+fn watch_state(state: Arc<State>, rx: Receiver<()>) {
+    ctrl_c(Arc::clone(&state));
+    print_stats(state, rx);
+}
+
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     env_logger::builder().format_timestamp_millis().init();
@@ -24,24 +29,24 @@ async fn main() -> Result<(), anyhow::Error> {
     console_subscriber::init();
 
     let cli = Cli::parse();
-
-    let state = State::new();
     let (tx, rx) = channel::<()>(1);
-
-    ctrl_c(Arc::clone(&state));
-    print_stats(Arc::clone(&state), rx);
-
     let statistics = Statistics::new();
 
+    let state;
     match cli.command {
         Some(cmd) => match cmd {
             Commands::Connect { common } => {
+                state = State::new(common.total);
+                watch_state(Arc::clone(&state), rx);
                 connect(&common, &state, &statistics).await?;
             }
+            
             Commands::Pub {
                 common,
                 mut pub_options,
             } => {
+                state = State::new(common.total);
+                watch_state(Arc::clone(&state), rx);
                 if 0 == pub_options.topic_total {
                     pub_options.topic_total = common.total;
                     info!(
@@ -57,6 +62,8 @@ async fn main() -> Result<(), anyhow::Error> {
                 common,
                 mut sub_options,
             } => {
+                state = State::new(common.total);
+                watch_state(Arc::clone(&state), rx);
                 if 0 == sub_options.topic_total {
                     sub_options.topic_total = common.total;
                     info!(
@@ -72,6 +79,8 @@ async fn main() -> Result<(), anyhow::Error> {
                 common,
                 mut pub_options,
             } => {
+                state = State::new(common.total);
+                watch_state(Arc::clone(&state), rx);
                 if 0 == pub_options.topic_total {
                     pub_options.topic_total = common.total;
                     info!(
@@ -89,10 +98,10 @@ async fn main() -> Result<(), anyhow::Error> {
         }
     }
 
+
     // Attempt to signal task that is printing statistics.
     if let Err(_e) = tx.send(()).await {
         trace!("Should have received Ctrl-C signal");
-        debug_assert!(state.stopped());
     }
 
     Ok(())

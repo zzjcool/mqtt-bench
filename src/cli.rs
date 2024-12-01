@@ -30,7 +30,7 @@ pub struct Common {
     #[arg(short, long)]
     pub auth_server_certificate: bool,
 
-    #[arg(short = 'q', long, default_value_t = 0)]
+    #[arg(short = 'q', long, default_value_t = 1)]
     pub qos: i32,
 
     #[arg(short = 'n', long, default_value_t = 0)]
