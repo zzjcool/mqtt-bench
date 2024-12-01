@@ -5,11 +5,11 @@ use anyhow::Context;
 use byteorder::WriteBytesExt;
 use log::{debug, error, info, trace, warn};
 use paho_mqtt::MessageBuilder;
+use ratelimit::Ratelimiter;
 use std::io::Cursor;
 use std::mem::size_of;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-use tokio::sync::Semaphore;
 use tokio::time::sleep;
 
 pub async fn connect(
@@ -17,16 +17,21 @@ pub async fn connect(
     state: &Arc<State>,
     statistics: &Statistics,
 ) -> Result<(), anyhow::Error> {
-    let semaphore = Arc::new(Semaphore::new(common.concurrency));
+    let rate_limiter = Ratelimiter::builder(1, Duration::from_millis(common.interval))
+        .max_tokens(common.concurrency as u64)
+        .build()?;
     for id in common.start_number..common.total + common.start_number {
         if state.stopped() {
             break;
         }
-
-        let permit = Arc::clone(&semaphore)
-            .acquire_owned()
-            .await
-            .context("Failed to acquire connect permit")?;
+        // Acquire a token
+        loop {
+            if let Err(sleep) = rate_limiter.try_wait() {
+                tokio::time::sleep(sleep).await;
+                continue;
+            }
+            break;
+        }
         let client = match crate::client::Client::new(
             common.clone(),
             common.client_id_of(id),
@@ -46,18 +51,7 @@ pub async fn connect(
         let _ = tokio::task::Builder::new()
             .name(&client.client_id())
             .spawn(async move {
-                // Retry till client connected
-                loop {
-                    if client.connect().await.is_err() {
-                        if client_state.stopped() {
-                            break;
-                        }
-                        continue
-                    }
-                    break;
-                }
-                drop(permit);
-
+                let _ = client.connect().await;
                 let mut warning_count = 0;
                 loop {
                     if client_state.stopped() {
@@ -70,7 +64,10 @@ pub async fn connect(
                         continue;
                     }
                     if warning_count % 100 == 0 {
-                        warn!("Client[client-id={}] is disconnected, awaiting reconnect", client.client_id());
+                        warn!(
+                            "Client[client-id={}] is disconnected, awaiting reconnect",
+                            client.client_id()
+                        );
                     }
                     warning_count += 1;
                 }
@@ -111,15 +108,21 @@ pub async fn publish(
     statistics: &Statistics,
     pub_options: &PubOptions,
 ) -> Result<(), anyhow::Error> {
-    let semaphore = Arc::new(Semaphore::new(common.concurrency));
+    let rate_limiter = Ratelimiter::builder(1, Duration::from_millis(common.interval))
+        .max_tokens(common.concurrency as u64)
+        .build()?;
     for id in common.start_number..common.total + common.start_number {
         if state.stopped() {
             break;
         }
-        let permit = Arc::clone(&semaphore)
-            .acquire_owned()
-            .await
-            .context("Failed to acquire publish permit")?;
+        // Acquire a token
+        loop {
+            if let Err(sleep) = rate_limiter.try_wait() {
+                tokio::time::sleep(sleep).await;
+                continue;
+            }
+            break;
+        }
         let client = match crate::client::Client::new(
             common.clone(),
             common.client_id_of(id),
@@ -148,18 +151,7 @@ pub async fn publish(
         let _ = tokio::task::Builder::new()
             .name(&client.client_id())
             .spawn(async move {
-                // Retry till client connected
-                loop {
-                    if client.connect().await.is_err() {
-                        if client_state.stopped() {
-                            break;
-                        }
-                        continue
-                    }
-                    break;
-                }
-                drop(permit);
-
+                let _ = client.connect().await;
                 let mut payload: Vec<u8> = payload.into();
 
                 let mut warning_count = 0;
@@ -190,7 +182,10 @@ pub async fn publish(
                         continue;
                     }
                     if warning_count % 100 == 0 {
-                        warn!("Client[client-id={}] is disconnected, awaiting reconnect", client.client_id());
+                        warn!(
+                            "Client[client-id={}] is disconnected, awaiting reconnect",
+                            client.client_id()
+                        );
                     }
                     warning_count += 1;
                 }
@@ -212,15 +207,21 @@ pub async fn subscribe(
     statistics: &Statistics,
     sub_options: &SubOptions,
 ) -> Result<(), anyhow::Error> {
-    let semaphore = Arc::new(Semaphore::new(common.concurrency));
+    let rate_limiter = Ratelimiter::builder(1, Duration::from_millis(common.interval))
+        .max_tokens(common.concurrency as u64)
+        .build()?;
     for id in common.start_number..common.total + common.start_number {
         if state.stopped() {
             break;
         }
-        let permit = Arc::clone(&semaphore)
-            .acquire_owned()
-            .await
-            .context("Failed to acquire subscribe permit")?;
+        // Acquire a token
+        loop {
+            if let Err(sleep) = rate_limiter.try_wait() {
+                tokio::time::sleep(sleep).await;
+                continue;
+            }
+            break;
+        }
         let client = match crate::client::Client::new(
             common.clone(),
             common.client_id_of(id),
@@ -241,17 +242,7 @@ pub async fn subscribe(
         let _ = tokio::task::Builder::new()
             .name(&client.client_id())
             .spawn(async move {
-                // Retry till client connected
-                loop {
-                    if client.connect().await.is_err() {
-                        if client_state.stopped() {
-                            break;
-                        }
-                        continue
-                    }
-                    break;
-                }
-                drop(permit);
+                let _ = client.connect().await;
 
                 // Retry till client subscribed
                 loop {
@@ -259,7 +250,7 @@ pub async fn subscribe(
                         break;
                     }
                     if client.subscribe(&topic, qos).await.is_err() {
-                        sleep(Duration::from_millis(10)).await;
+                        sleep(Duration::from_millis(100)).await;
                         continue;
                     }
                     break;
@@ -276,7 +267,10 @@ pub async fn subscribe(
                         continue;
                     }
                     if warning_count % 100 == 0 {
-                        warn!("Client[client-id={}] is disconnected, awaiting reconnect", client.client_id());
+                        warn!(
+                            "Client[client-id={}] is disconnected, awaiting reconnect",
+                            client.client_id()
+                        );
                     }
                     warning_count += 1;
                 }
@@ -298,15 +292,23 @@ pub async fn benchmark(
     statistics: &Statistics,
     pub_options: &PubOptions,
 ) -> Result<(), anyhow::Error> {
-    let semaphore = Arc::new(Semaphore::new(common.concurrency));
+    let rate_limiter = Ratelimiter::builder(1, Duration::from_millis(common.interval))
+        .max_tokens(common.concurrency as u64)
+        .build()?;
     for id in common.start_number..common.total + common.start_number {
         if state.stopped() {
             break;
         }
-        let permit = Arc::clone(&semaphore)
-            .acquire_owned()
-            .await
-            .context("Failed to acquire publish permit")?;
+
+        // Acquire a token
+        loop {
+            if let Err(sleep) = rate_limiter.try_wait() {
+                tokio::time::sleep(sleep).await;
+                continue;
+            }
+            break;
+        }
+
         let client = match crate::client::Client::new(
             common.clone(),
             common.client_id_of(id),
@@ -336,18 +338,7 @@ pub async fn benchmark(
         let _ = tokio::task::Builder::new()
             .name(&client.client_id())
             .spawn(async move {
-                // Retry till client connected
-                loop {
-                    if let Err(e) = client.connect().await {
-                        error!("{}", e.to_string());
-                        if client_state.stopped() {
-                            break;
-                        }
-                        continue
-                    }
-                    break;
-                }
-                drop(permit);
+                let _ = client.connect().await;
 
                 // Retry till client subscribed
                 loop {
@@ -355,12 +346,12 @@ pub async fn benchmark(
                         break;
                     }
                     if client.subscribe(&topic, qos).await.is_err() {
-                        sleep(Duration::from_millis(10)).await; 
+                        sleep(Duration::from_millis(100)).await;
                         continue;
                     }
                     break;
                 }
-                
+
                 let mut payload: Vec<u8> = payload.into();
 
                 let mut warning_count = 0;
@@ -381,9 +372,8 @@ pub async fn benchmark(
                         .finalize();
 
                     if client.connected() {
-                        if let Err(_) = client.publish(message.clone()).await {
+                        if client.publish(message.clone()).await.is_err() {
                             client_state.on_publish_failure();
-                            break;
                         }
 
                         if pub_interval.as_millis() > 0 {
@@ -391,12 +381,15 @@ pub async fn benchmark(
                         }
                         continue;
                     }
-                    
+
                     if warning_count % 100 == 0 {
-                        warn!("Client[client-id={}] is disconnected, awaiting reconnect", client.client_id());                        
+                        debug!(
+                            "Client[client-id={}] is disconnected, awaiting reconnect",
+                            client.client_id()
+                        );
                     }
                     warning_count += 1;
-                    tokio::time::sleep(Duration::from_millis(10)).await;
+                    tokio::time::sleep(Duration::from_millis(100)).await;
                 }
             });
     }

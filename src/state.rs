@@ -39,7 +39,7 @@ impl State {
     pub fn connected(&self) -> usize {
         self.connected.load(Ordering::Relaxed)
     }
-    
+
     pub fn disconnected(&self) -> usize {
         self.disconnected.load(Ordering::Relaxed)
     }
@@ -57,7 +57,7 @@ impl State {
         self.connected.fetch_add(1, Ordering::Relaxed);
         self.disconnected.fetch_sub(1, Ordering::Relaxed);
     }
-    
+
     pub fn on_disconnected(&self) {
         self.attempted.fetch_add(1, Ordering::Relaxed);
         self.disconnected.fetch_add(1, Ordering::Relaxed);
@@ -80,7 +80,7 @@ impl State {
     pub fn on_publish_failure(&self) {
         self.pub_failures.fetch_add(1, Ordering::Relaxed);
     }
-    
+
     pub fn publish_failure_count(&self) -> usize {
         let count = self.pub_failures.load(Ordering::Relaxed);
         if count > 0 {
@@ -97,7 +97,7 @@ impl State {
     pub fn received(&self) -> usize {
         let rcv = self.received.load(Ordering::Relaxed);
         if rcv > 0 {
-            self.received.fetch_sub(rcv, Ordering::Relaxed);            
+            self.received.fetch_sub(rcv, Ordering::Relaxed);
         }
         rcv
     }
@@ -129,7 +129,7 @@ pub fn print_stats(state: Arc<State>, mut rx: Receiver<()>) {
                     }
                     _ = sleep(Duration::from_secs(1)) => {
                         info!("Client Summary[Attempted:{}, Connected: {}, Disconnected: {}] Publish: [Success: {}, Failure: {}], Subscribed: {}", 
-                            state.attempted(), state.connected(), state.disconnected(), 
+                            state.attempted(), state.connected(), state.disconnected(),
                             state.publish_success_count(), state.publish_failure_count(), state.received());
                         if state.stopped() {
                             break;

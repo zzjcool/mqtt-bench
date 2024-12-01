@@ -4,7 +4,7 @@ use crate::statistics::LatencyHistogram;
 use anyhow::Context;
 use byteorder::ReadBytesExt;
 use bytes::Buf;
-use log::{debug, error, info, trace};
+use log::{debug, error, trace};
 use mqtt::AsyncClient;
 use paho_mqtt as mqtt;
 use std::io::Cursor;
@@ -111,7 +111,7 @@ impl Client {
 
         let state_ = Arc::clone(&self.state);
         self.inner.set_connection_lost_callback(move |c| {
-            info!(
+            debug!(
                 "Client[client-id={}] lost connection, reconnecting...",
                 c.client_id()
             );
@@ -128,7 +128,7 @@ impl Client {
             .connect(connect_opts)
             .await
             .context("Failed to connect to the MQTT server")?;
-        
+
         self.latency
             .connect
             .observe(instant.elapsed().as_millis() as f64);

@@ -40,7 +40,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 watch_state(Arc::clone(&state), rx);
                 connect(&common, &state, &statistics).await?;
             }
-            
+
             Commands::Pub {
                 common,
                 mut pub_options,
@@ -97,7 +97,6 @@ async fn main() -> Result<(), anyhow::Error> {
             println!("No command specified");
         }
     }
-
 
     // Attempt to signal task that is printing statistics.
     if let Err(_e) = tx.send(()).await {
