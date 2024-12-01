@@ -49,7 +49,7 @@ pub struct Common {
     #[arg(long, default_value_t = 60)]
     pub time: usize,
 
-    #[arg(long, default_value_t = String::from("bench-client-%d"))]
+    #[arg(long, default_value_t = String::from("BenchClient%d"))]
     pub client_id: String,
 
     #[arg(long)]
@@ -72,6 +72,13 @@ impl Common {
         } else {
             format!("tcp://{}:{}", self.host, self.port.unwrap_or(1883))
         }
+    }
+    
+    pub fn client_id_of(&self, id: usize) -> String {
+        if self.client_id.contains("%d") {
+            return self.client_id.replace("%d", &id.to_string());
+        }
+        self.client_id.clone()
     }
 }
 

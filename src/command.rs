@@ -26,10 +26,8 @@ pub async fn connect(
             .acquire_owned()
             .await
             .context("Failed to acquire connect permit")?;
-
         let client = match crate::client::Client::new(
-            common.clone(),
-            &format!("client_{}", id),
+            common.clone(), common.client_id_of(id),
             statistics.latency.clone(),
             Arc::clone(state),
         )
@@ -112,7 +110,7 @@ pub async fn publish(
             .context("Failed to acquire publish permit")?;
         let client = match crate::client::Client::new(
             common.clone(),
-            &format!("client_{}", id),
+            common.client_id_of(id),
             statistics.latency.clone(),
             Arc::clone(state),
         )
@@ -209,7 +207,7 @@ pub async fn subscribe(
             .context("Failed to acquire subscribe permit")?;
         let client = match crate::client::Client::new(
             common.clone(),
-            &format!("client_{}", id),
+            common.client_id_of(id),
             statistics.latency.clone(),
             Arc::clone(state),
         )
@@ -286,7 +284,7 @@ pub async fn benchmark(
             .context("Failed to acquire publish permit")?;
         let client = match crate::client::Client::new(
             common.clone(),
-            &format!("client_{}", id),
+            common.client_id_of(id),
             statistics.latency.clone(),
             Arc::clone(state),
         )

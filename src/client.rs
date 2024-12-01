@@ -23,7 +23,7 @@ pub struct Client {
 impl Client {
     pub fn new(
         opts: Common,
-        client_id: &str,
+        client_id: String,
         latency: LatencyHistogram,
         state: Arc<State>,
     ) -> Result<Self, anyhow::Error> {
@@ -36,7 +36,7 @@ impl Client {
         let create_opts = mqtt::CreateOptionsBuilder::new_v3()
             .client_id(client_id)
             .server_uri(server_uri)
-            .mqtt_version(4)
+            .mqtt_version(mqtt::MQTT_VERSION_3_1_1)
             .persistence(mqtt::PersistenceType::None)
             .send_while_disconnected(false)
             .allow_disconnected_send_at_anytime(false)
