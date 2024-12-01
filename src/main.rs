@@ -10,6 +10,13 @@ use mqtt_bench::command::{benchmark, connect, publish, subscribe};
 use mqtt_bench::statistics::Statistics;
 use tokio::sync::mpsc::channel;
 
+#[cfg(not(target_env = "msvc"))]
+use tikv_jemallocator::Jemalloc;
+
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     env_logger::builder().format_timestamp_millis().init();
