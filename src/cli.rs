@@ -33,6 +33,9 @@ pub struct Common {
     #[arg(short = 'q', long, default_value_t = 0)]
     pub qos: i32,
 
+    #[arg(short = 'n', long, default_value_t = 0)]
+    pub start_number: usize,
+
     /// Total number of client to create
     #[arg(long, default_value_t = 16)]
     pub total: usize,
@@ -52,7 +55,7 @@ pub struct Common {
     #[arg(long, default_value_t = String::from("BenchClient%d"))]
     pub client_id: String,
 
-    #[arg(long)]
+    #[arg(long, default_value_t = true)]
     pub show_statistics: bool,
 
     #[arg(long, default_value_t = 5)]
@@ -73,7 +76,7 @@ impl Common {
             format!("tcp://{}:{}", self.host, self.port.unwrap_or(1883))
         }
     }
-    
+
     pub fn client_id_of(&self, id: usize) -> String {
         if self.client_id.contains("%d") {
             return self.client_id.replace("%d", &id.to_string());
@@ -86,26 +89,36 @@ impl Common {
 pub struct PubOptions {
     /// Topic pattern to publish messages to.
     ///
-    /// The topic pattern can contain a `%i` placeholder which will be replaced by an ID.
+    /// The topic pattern can contain a `%d` placeholder which will be replaced by an ID.
     ///
-    /// For example, if the topic pattern is `topic/%i`, the actual topic will be `topic/0`, `topic/1`, etc.
-    #[arg(long)]
+    /// For example, if the topic pattern is `home/%d`, the actual topic will be `home/0`, `home/1`, etc.
+    #[arg(long, default_value_t = String::from("home/%d"))]
     pub topic: String,
 
     /// If `topic` contains `%i`, this is the number of topics to publish messages to.
     ///
-    /// If `topic_number` is less than number of the clients: `total`, the topics will be reused; Alternatively, if the `topic_number` is greater than the number of clients,
-    /// only the first `total` topics will be used during the benchmark.
+    /// If `topic_total` is less than number of the clients: `total`, the topics will be reused;
+    /// If the `topic_total` is greater than the number of clients, only the first `total` topics
+    /// will be used during benchmark;
     ///
-    /// If `topic_number` is 0, it will be set to `total`.
+    /// If `topic_total` is 0, it will be set to `total`.
     #[arg(long, default_value_t = 0)]
-    pub topic_number: usize,
+    pub topic_total: usize,
 
     #[arg(long, default_value_t = 64)]
     pub message_size: u32,
 
     #[arg(long)]
     pub payload: Option<String>,
+}
+
+impl PubOptions {
+    pub fn topic_of(&self, id: usize) -> String {
+        if self.topic.contains("%d") {
+            return self.topic.replace("%d", &id.to_string());
+        }
+        self.topic.clone()
+    }
 }
 
 #[derive(Debug, Clone, Args)]
@@ -115,12 +128,22 @@ pub struct SubOptions {
 
     /// If `topic` contains `%i`, this is the number of topics to publish messages to.
     ///
-    /// If `topic_number` is less than number of the clients: `total`, the topics will be reused; Alternatively, if the `topic_number` is greater than the number of clients,
+    /// If `topic_total` is less than number of the clients: `total`, the topics will be reused;
+    /// If the `topic_total` is greater than the number of clients,
     /// only the first `total` topics will be used during the benchmark.
     ///
-    /// If `topic_number` is 0, it will be set to `total`.
+    /// If `topic_total` is 0, it will be set to `total`.
     #[arg(long, default_value_t = 0)]
-    pub topic_number: usize,
+    pub topic_total: usize,
+}
+
+impl SubOptions {
+    pub fn topic_of(&self, id: usize) -> String {
+        if self.topic.contains("%d") {
+            return self.topic.replace("%d", &id.to_string());
+        }
+        self.topic.clone()
+    }
 }
 
 #[derive(Subcommand, Debug)]

@@ -42,10 +42,10 @@ async fn main() -> Result<(), anyhow::Error> {
                 common,
                 mut pub_options,
             } => {
-                if 0 == pub_options.topic_number {
-                    pub_options.topic_number = common.total;
+                if 0 == pub_options.topic_total {
+                    pub_options.topic_total = common.total;
                     info!(
-                        "Now that --topic-number is 0, it will be set to --topic-number={}",
+                        "Now that --topic-total is 0, it will be set to --topic-total={}",
                         common.total
                     );
                 }
@@ -57,10 +57,10 @@ async fn main() -> Result<(), anyhow::Error> {
                 common,
                 mut sub_options,
             } => {
-                if 0 == sub_options.topic_number {
-                    sub_options.topic_number = common.total;
+                if 0 == sub_options.topic_total {
+                    sub_options.topic_total = common.total;
                     info!(
-                        "Now that --topic-number is 0, it will be set to --topic-number={}",
+                        "Now that --topic-total is 0, it will be set to --topic-total={}",
                         common.total
                     );
                 }
@@ -72,10 +72,10 @@ async fn main() -> Result<(), anyhow::Error> {
                 common,
                 mut pub_options,
             } => {
-                if 0 == pub_options.topic_number {
-                    pub_options.topic_number = common.total;
+                if 0 == pub_options.topic_total {
+                    pub_options.topic_total = common.total;
                     info!(
-                        "Now that --topic-number is 0, it will be set to --topic-number={}",
+                        "Now that --topic-total is 0, it will be set to --topic-total={}",
                         common.total
                     );
                 }

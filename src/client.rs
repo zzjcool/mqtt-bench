@@ -102,14 +102,18 @@ impl Client {
 
         self.inner.set_connected_callback(|cli| {
             info!(
-                "Connected to server_uri={} with client-id={}",
-                cli.server_uri(),
-                cli.client_id()
+                "Client[client-id={}] connected to server_uri={}",
+                cli.client_id(),
+                cli.server_uri()
             );
         });
 
         self.inner.set_connection_lost_callback(|c| {
-            info!("Connection lost client-id: {}", c.client_id());
+            info!(
+                "Client[client-id={}] lost connection, reconnecting...",
+                c.client_id()
+            );
+            c.reconnect();
         });
 
         if self.state.stopped() {

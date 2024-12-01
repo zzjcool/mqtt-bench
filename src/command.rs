@@ -17,7 +17,7 @@ pub async fn connect(
     statistics: &Statistics,
 ) -> Result<(), anyhow::Error> {
     let semaphore = Arc::new(Semaphore::new(common.concurrency));
-    for id in 0..common.total {
+    for id in common.start_number..common.total + common.start_number {
         if state.stopped() {
             break;
         }
@@ -27,7 +27,8 @@ pub async fn connect(
             .await
             .context("Failed to acquire connect permit")?;
         let client = match crate::client::Client::new(
-            common.clone(), common.client_id_of(id),
+            common.clone(),
+            common.client_id_of(id),
             statistics.latency.clone(),
             Arc::clone(state),
         )
@@ -100,7 +101,7 @@ pub async fn publish(
     pub_options: &PubOptions,
 ) -> Result<(), anyhow::Error> {
     let semaphore = Arc::new(Semaphore::new(common.concurrency));
-    for id in 0..common.total {
+    for id in common.start_number..common.total + common.start_number {
         if state.stopped() {
             break;
         }
@@ -127,12 +128,7 @@ pub async fn publish(
             .clone()
             .unwrap_or_else(|| "a".repeat(pub_options.message_size as usize));
 
-        let topic = if pub_options.topic.contains("%i") {
-            let idx = id % pub_options.topic_number;
-            pub_options.topic.replace("%i", &idx.to_string())
-        } else {
-            pub_options.topic.clone()
-        };
+        let topic = pub_options.topic_of(id);
 
         let pub_interval = Duration::from_millis(common.interval);
         let qos = common.qos;
@@ -197,7 +193,7 @@ pub async fn subscribe(
     sub_options: &SubOptions,
 ) -> Result<(), anyhow::Error> {
     let semaphore = Arc::new(Semaphore::new(common.concurrency));
-    for id in 0..common.total {
+    for id in common.start_number..common.total + common.start_number {
         if state.stopped() {
             break;
         }
@@ -219,14 +215,7 @@ pub async fn subscribe(
                 break;
             }
         };
-
-        let topic = if sub_options.topic.contains("%i") {
-            let idx = id % sub_options.topic_number;
-            sub_options.topic.replace("%i", &idx.to_string())
-        } else {
-            sub_options.topic.clone()
-        };
-
+        let topic = sub_options.topic_of(id);
         let client_state = Arc::clone(state);
         let qos = common.qos;
         let _ = tokio::task::Builder::new()
@@ -274,7 +263,7 @@ pub async fn benchmark(
     pub_options: &PubOptions,
 ) -> Result<(), anyhow::Error> {
     let semaphore = Arc::new(Semaphore::new(common.concurrency));
-    for id in 0..common.total {
+    for id in common.start_number..common.total + common.start_number {
         if state.stopped() {
             break;
         }
@@ -302,12 +291,7 @@ pub async fn benchmark(
             .clone()
             .unwrap_or_else(|| "a".repeat(pub_options.message_size as usize));
 
-        let topic = if pub_options.topic.contains("%i") {
-            let idx = id % pub_options.topic_number;
-            pub_options.topic.replace("%i", &idx.to_string())
-        } else {
-            pub_options.topic.clone()
-        };
+        let topic = pub_options.topic_of(id);
 
         let pub_interval = Duration::from_millis(common.interval);
         let qos = common.qos;
