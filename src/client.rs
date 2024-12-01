@@ -85,7 +85,7 @@ impl Client {
     pub async fn connect(&self, _permit: OwnedSemaphorePermit) -> Result<(), anyhow::Error> {
         let connect_opts = mqtt::ConnectOptionsBuilder::new_v3()
             .clean_session(true)
-            .user_name(&self.opts.user_name)
+            .user_name(&self.opts.username)
             .password(&self.opts.password)
             .connect_timeout(Duration::from_secs(self.opts.connect_timeout))
             .keep_alive_interval(Duration::from_secs(self.opts.keep_alive_interval))

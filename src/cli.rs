@@ -16,7 +16,7 @@ pub struct Common {
     pub port: Option<u16>,
 
     #[arg(short = 'u', long)]
-    pub user_name: String,
+    pub username: String,
 
     #[arg(short = 'P', long)]
     pub password: String,
