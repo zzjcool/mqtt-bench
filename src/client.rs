@@ -1,6 +1,7 @@
 use super::cli::Common;
 use crate::state::State;
 use crate::statistics::LatencyHistogram;
+use crate::subscription::Subscription;
 use anyhow::Context;
 use byteorder::ReadBytesExt;
 use bytes::Buf;
@@ -8,12 +9,13 @@ use log::{debug, error, trace};
 use mqtt::AsyncClient;
 use paho_mqtt as mqtt;
 use std::io::Cursor;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, SystemTime};
 use tokio::time::Instant;
 
 pub struct Client {
     opts: Common,
+    subscription: OnceLock<Subscription>,
     pub inner: AsyncClient,
     latency: LatencyHistogram,
     state: Arc<State>,
@@ -71,6 +73,7 @@ impl Client {
 
         Ok(Self {
             opts,
+            subscription: OnceLock::new(),
             inner: client,
             latency,
             state,
@@ -100,6 +103,7 @@ impl Client {
             .finalize();
 
         let connected_state = Arc::clone(&self.state);
+        let sub = self.subscription.get().cloned();
         self.inner.set_connected_callback(move |cli| {
             debug!(
                 "Client[client-id={}] connected to server_uri={}",
@@ -107,6 +111,9 @@ impl Client {
                 cli.server_uri()
             );
             connected_state.on_connected();
+            if let Some(subscription) = &sub {
+                cli.subscribe(&subscription.topic_filter, subscription.qos);
+            }
         });
 
         let state_ = Arc::clone(&self.state);
@@ -160,13 +167,9 @@ impl Client {
         Ok(())
     }
 
-    pub async fn subscribe(&self, topic: &str, qos: i32) -> Result<(), anyhow::Error> {
-        let _sub_result = self.inner.subscribe(topic, qos).await.context(format!(
-            "Failed to subscribe to the topic={}, qos={}",
-            topic, qos
-        ))?;
-        debug!("{} subscribed {} with qos={}", self.client_id(), topic, qos);
-        Ok(())
+    pub fn subscribe(&self, topic: &str, qos: i32) {
+        let subscription = Subscription::new(topic.to_owned(), qos);
+        self.subscription.get_or_init(|| subscription);
     }
 }
 

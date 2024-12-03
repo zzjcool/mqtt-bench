@@ -10,7 +10,6 @@ use std::io::Cursor;
 use std::mem::size_of;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-use tokio::time::sleep;
 
 pub async fn connect(
     common: &Common,
@@ -239,40 +238,19 @@ pub async fn subscribe(
         let topic = sub_options.topic_of(id);
         let client_state = Arc::clone(state);
         let qos = common.qos;
+        
+        client.subscribe(&topic, qos);
+        
         let _ = tokio::task::Builder::new()
             .name(&client.client_id())
             .spawn(async move {
                 let _ = client.connect().await;
-
-                // Retry till client subscribed
+                // Loop to keep client ref alive
                 loop {
                     if client_state.stopped() {
                         break;
                     }
-                    if client.subscribe(&topic, qos).await.is_err() {
-                        sleep(Duration::from_millis(100)).await;
-                        continue;
-                    }
-                    break;
-                }
-
-                let mut warning_count = 0;
-                loop {
-                    if client_state.stopped() {
-                        break;
-                    }
-
-                    if client.connected() {
-                        tokio::time::sleep(Duration::from_secs(1)).await;
-                        continue;
-                    }
-                    if warning_count % 100 == 0 {
-                        warn!(
-                            "Client[client-id={}] is disconnected, awaiting reconnect",
-                            client.client_id()
-                        );
-                    }
-                    warning_count += 1;
+                    tokio::time::sleep(Duration::from_secs(1)).await;
                 }
             });
     }
@@ -334,23 +312,12 @@ pub async fn benchmark(
         let pub_interval = Duration::from_millis(common.interval);
         let qos = common.qos;
 
+        client.subscribe(&topic, qos);
         let client_state = Arc::clone(state);
         let _ = tokio::task::Builder::new()
             .name(&client.client_id())
             .spawn(async move {
                 let _ = client.connect().await;
-
-                // Retry till client subscribed
-                loop {
-                    if client_state.stopped() {
-                        break;
-                    }
-                    if client.subscribe(&topic, qos).await.is_err() {
-                        sleep(Duration::from_millis(100)).await;
-                        continue;
-                    }
-                    break;
-                }
 
                 let mut payload: Vec<u8> = payload.into();
 
@@ -421,8 +388,7 @@ fn tag_timestamp(data: &mut [u8]) -> anyhow::Result<()> {
     }
 
     let ts = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap()
+        .duration_since(SystemTime::UNIX_EPOCH)?
         .as_millis();
 
     let mut cursor = Cursor::new(data);
