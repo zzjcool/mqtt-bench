@@ -23,6 +23,7 @@ paho-mqtt = { version = "0.12", features = ["vendored-ssl"] }
 prometheus = "0.13.4"
 ratelimit = "0.10.0"
 tokio = { version = "1", features = ["full"] }
+tokio-openssl = "0.6.5"
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
 tikv-jemallocator = "0.6.0"

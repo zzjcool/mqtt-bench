@@ -83,7 +83,7 @@ pub fn mk_ca_cert() -> Result<(X509, PKey<Private>), ErrorStack> {
 }
 
 /// Make a X509 request with the given private key
-pub fn mk_request(key_pair: &PKey<Private>, commonName: &str) -> Result<X509Req, ErrorStack> {
+pub fn mk_request(key_pair: &PKey<Private>, common_name: &str) -> Result<X509Req, ErrorStack> {
     let mut req_builder = X509ReqBuilder::new()?;
     req_builder.set_pubkey(key_pair)?;
 
@@ -91,7 +91,7 @@ pub fn mk_request(key_pair: &PKey<Private>, commonName: &str) -> Result<X509Req,
     x509_name.append_entry_by_text("C", "US")?;
     x509_name.append_entry_by_text("ST", "TX")?;
     x509_name.append_entry_by_text("O", "Some organization")?;
-    x509_name.append_entry_by_text("CN", commonName)?;
+    x509_name.append_entry_by_text("CN", common_name)?;
     let x509_name = x509_name.build();
     req_builder.set_subject_name(&x509_name)?;
 
@@ -164,6 +164,10 @@ pub fn mk_ca_signed_cert(
 mod tests {
     use crate::cert::{load_ca_cert, load_ca_pkey, mk_ca_signed_cert};
     use anyhow::Error;
+    use log::info;
+    use openssl::nid::Nid;
+    use openssl::ssl::{NameType, SniError, SslConnector, SslMethod, SslVerifyMode};
+    use std::net::TcpStream;
     use std::path::PathBuf;
 
     #[test]
@@ -183,29 +187,108 @@ mod tests {
         ca_cert_path_buf.push("CA.crt");
         let ca_cert = load_ca_cert(&ca_cert_path_buf)?;
         for entry in ca_cert.subject_name().entries() {
-            println!("{:?}", entry);
+            info!("{:?}", entry);
         }
         Ok(())
     }
-    
+
     #[test]
     fn test_mk_ca_signed_cert() -> Result<(), Error> {
         let mut ca_key_path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         ca_key_path_buf.push("assets");
         ca_key_path_buf.push("CA.key");
         let ca_key = load_ca_pkey(&ca_key_path_buf)?;
-        
+
         let mut ca_cert_path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         ca_cert_path_buf.push("assets");
         ca_cert_path_buf.push("CA.crt");
         let ca_cert = load_ca_cert(&ca_cert_path_buf)?;
-        
-        let (cert, key) = mk_ca_signed_cert(&ca_cert, &ca_key, "abc.com")?;
+
+        let (cert, _key) = mk_ca_signed_cert(&ca_cert, &ca_key, "abc.com")?;
 
         for entry in cert.subject_name().entries() {
-            println!("{:?}", entry);
+            let asn1_object = entry.object();
+            if Nid::COMMONNAME == asn1_object.nid() {
+                let value = entry.data().as_slice();
+                assert_eq!("abc.com", String::from_utf8_lossy(value));
+            }
         }
-        
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_tls_connect() -> Result<(), Error> {
+        env_logger::builder().is_test(true).try_init()?;
+        let mut ca_key_path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        ca_key_path_buf.push("assets");
+        ca_key_path_buf.push("CA.key");
+        let ca_key = load_ca_pkey(&ca_key_path_buf)?;
+
+        let mut ca_cert_path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        ca_cert_path_buf.push("assets");
+        ca_cert_path_buf.push("CA.crt");
+        let ca_cert = load_ca_cert(&ca_cert_path_buf)?;
+
+        let (cert, key) = mk_ca_signed_cert(&ca_cert, &ca_key, "abc.com")?;
+
+        let tcp_stream = TcpStream::connect("www.baidu.com:443")?;
+        let mut ssl_connector_builder = SslConnector::builder(SslMethod::tls_client())?;
+        ssl_connector_builder.set_certificate(&cert)?;
+        ssl_connector_builder.set_private_key(&key)?;
+        ssl_connector_builder.set_verify(SslVerifyMode::NONE);
+        ssl_connector_builder.set_servername_callback(
+            |ssl_ref, _ssl_alert| -> Result<(), SniError> {
+                if let Some(hostname) = ssl_ref.servername(NameType::HOST_NAME) {
+                    info!("Server Hostname: {}", hostname);
+                }
+                Ok(())
+            },
+        );
+        let ssl_connector = ssl_connector_builder.build();
+        let _ssl_stream = ssl_connector.connect("www.baidu.com", tcp_stream)?;
+        info!("SSL connected");
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod async_tests {
+    use crate::cert::{load_ca_cert, load_ca_pkey, mk_ca_signed_cert};
+    use anyhow::Error;
+    use log::info;
+    use openssl::ssl::{Ssl, SslContext, SslMethod, SslVerifyMode};
+    use std::path::PathBuf;
+    use std::pin::pin;
+    use tokio::net::TcpStream;
+    use tokio_openssl::SslStream;
+    #[tokio::test]
+    async fn test_tokio() -> Result<(), Error> {
+        env_logger::builder().is_test(true).try_init()?;
+        let mut ca_key_path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        ca_key_path_buf.push("assets");
+        ca_key_path_buf.push("CA.key");
+        let ca_key = load_ca_pkey(&ca_key_path_buf)?;
+
+        let mut ca_cert_path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        ca_cert_path_buf.push("assets");
+        ca_cert_path_buf.push("CA.crt");
+        let ca_cert = load_ca_cert(&ca_cert_path_buf)?;
+
+        let (cert, key) = mk_ca_signed_cert(&ca_cert, &ca_key, "abc.com")?;
+
+        let mut ssl_context_builder = SslContext::builder(SslMethod::tls_client())?;
+        ssl_context_builder.set_certificate(&cert)?;
+        ssl_context_builder.set_private_key(&key)?;
+        ssl_context_builder.set_verify(SslVerifyMode::NONE);
+        let ssl_context = ssl_context_builder.build();
+        let ssl = Ssl::new(&ssl_context)?;
+
+        let tcp_stream = TcpStream::connect("www.baidu.com:443").await?;
+        let ssl_stream = SslStream::new(ssl, tcp_stream)?;
+        let ssl_stream = pin!(ssl_stream);
+        ssl_stream.connect().await?;
+        info!("Tokio SSL connected");
         Ok(())
     }
 }

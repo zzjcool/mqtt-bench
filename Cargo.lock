@@ -998,6 +998,7 @@ dependencies = [
  "ratelimit",
  "tikv-jemallocator",
  "tokio",
+ "tokio-openssl",
 ]
 
 [[package]]
@@ -1699,6 +1700,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.90",
+]
+
+[[package]]
+name = "tokio-openssl"
+version = "0.6.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "59df6849caa43bb7567f9a36f863c447d95a11d5903c9cc334ba32576a27eadd"
+dependencies = [
+ "openssl",
+ "openssl-sys",
+ "tokio",
 ]
 
 [[package]]
