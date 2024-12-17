@@ -1,3 +1,4 @@
+pub mod cert;
 pub mod cli;
 pub mod client;
 pub mod command;

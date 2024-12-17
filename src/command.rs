@@ -238,9 +238,9 @@ pub async fn subscribe(
         let topic = sub_options.topic_of(id);
         let client_state = Arc::clone(state);
         let qos = common.qos;
-        
+
         client.subscribe(&topic, qos);
-        
+
         let _ = tokio::task::Builder::new()
             .name(&client.client_id())
             .spawn(async move {
