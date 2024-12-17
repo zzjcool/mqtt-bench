@@ -182,6 +182,7 @@ mod tests {
 
     #[test]
     fn test_load_ca_cert() -> Result<(), Error> {
+        let _ = env_logger::builder().is_test(true).try_init();
         let mut ca_cert_path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         ca_cert_path_buf.push("assets");
         ca_cert_path_buf.push("CA.crt");
@@ -219,7 +220,7 @@ mod tests {
 
     #[test]
     fn test_tls_connect() -> Result<(), Error> {
-        env_logger::builder().is_test(true).try_init()?;
+        let _ = env_logger::builder().is_test(true).try_init();
         let mut ca_key_path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         ca_key_path_buf.push("assets");
         ca_key_path_buf.push("CA.key");
@@ -264,7 +265,7 @@ mod async_tests {
     use tokio_openssl::SslStream;
     #[tokio::test]
     async fn test_tokio() -> Result<(), Error> {
-        env_logger::builder().is_test(true).try_init()?;
+        let _ = env_logger::builder().is_test(true).try_init();
         let mut ca_key_path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         ca_key_path_buf.push("assets");
         ca_key_path_buf.push("CA.key");
